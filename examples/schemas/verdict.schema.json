@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/verdict.schema.json",
+  "title": "VerdictResult",
+  "type": "object",
+  "required": ["id", "real", "reason", "evidence"],
+  "properties": {
+    "id": { "type": "string" },
+    "real": { "type": "boolean" },
+    "reason": { "type": "string" },
+    "evidence": { "type": "string" }
+  },
+  "additionalProperties": false
+}

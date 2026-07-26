@@ -1,0 +1,46 @@
+{
+  "name": "minimal-summary",
+  "description": "Tiny demo workflow: one agent returns a structured summary",
+  "phases": [
+    { "title": "Summarize", "detail": "single agent with JSON Schema output" }
+  ],
+  "args": {
+    "target": { "required": true },
+    "label": { "default": "run" }
+  },
+  "schemas": {
+    "summary": "./schemas/summary.schema.json"
+  },
+  "steps": [
+    { "op": "phase", "title": "Summarize" },
+    {
+      "op": "agent",
+      "as": "result",
+      "label": "summarize",
+      "agent_type": "analyst",
+      "capability_mode": "read-only",
+      "output_schema": "summary",
+      "prompt": [
+        "Summarize the subject below into the required schema.",
+        "Use tools if the subject is a path; otherwise answer from the text.",
+        "Subject: {{args.target}}",
+        "Label: {{args.label}}",
+        "Set ok=true when you produced a usable summary."
+      ]
+    },
+    {
+      "op": "if_failed",
+      "path": "result",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "agent failed", "ok": false }
+        }
+      ]
+    },
+    {
+      "op": "complete_from",
+      "from": "result"
+    }
+  ]
+}

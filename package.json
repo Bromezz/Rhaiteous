@@ -1,0 +1,32 @@
+{
+  "name": "rhaiteous",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Rhaiteous — compile JSON + JSON Schema workflow definitions into Grok Build Rhai scripts",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "rhaiteous": "./bin/rhaiteous.js"
+  },
+  "exports": {
+    ".": "./src/compile-workflow.js",
+    "./json-to-rhai": "./src/json-to-rhai.js"
+  },
+  "scripts": {
+    "rhaiteous": "node ./bin/rhaiteous.js",
+    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js",
+    "example:compile": "node ./bin/rhaiteous.js ./examples/minimal.workflow.json -o ./examples/out/minimal-summary.rhai"
+  },
+  "keywords": [
+    "rhaiteous",
+    "grok",
+    "grok-build",
+    "rhai",
+    "workflow",
+    "json-schema",
+    "compiler"
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "name": "client-issues",
+  "description": "Mine client docs for issues of concern; adversarially verify; complete with survivors",
+  "phases": [
+    { "title": "Intake", "detail": "inventory source docs" },
+    { "title": "Analysis", "detail": "parallel analysts extract candidates" },
+    { "title": "Challenge", "detail": "parallel skeptics verify candidates" }
+  ],
+  "args": {
+    "docs_dir": { "required": true },
+    "client_name": { "default": "client" }
+  },
+  "schemas": {
+    "inventory": "./schemas/inventory.schema.json",
+    "candidates": "./schemas/candidates.schema.json",
+    "verdict": "./schemas/verdict.schema.json"
+  },
+  "steps": [
+    { "op": "phase", "title": "Intake" },
+    {
+      "op": "agent",
+      "as": "intake",
+      "label": "intake",
+      "agent_type": "stickler",
+      "capability_mode": "read-only",
+      "output_schema": "inventory",
+      "prompt": [
+        "Inventory source documents for issue mining.",
+        "Client: {{args.client_name}}",
+        "Docs root: {{args.docs_dir}}",
+        "Use list_dir/read tools. Return every relevant file path under that root.",
+        "Skip binaries and noise. notes = brief scope summary."
+      ]
+    },
+    {
+      "op": "if_failed",
+      "path": "intake",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "intake failed", "issues": [] }
+        }
+      ]
+    },
+    {
+      "op": "bind",
+      "as": "files",
+      "from": "intake",
+      "field": "files"
+    },
+    {
+      "op": "if_empty",
+      "path": "files",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "No source files found.", "issues": [] }
+        }
+      ]
+    },
+    {
+      "op": "log",
+      "message": "Intake complete for {{args.client_name}}"
+    },
+    { "op": "phase", "title": "Analysis" },
+    {
+      "op": "parallel",
+      "as": "analysis_results",
+      "over": "files",
+      "item_as": "f",
+      "index_as": "i",
+      "label_prefix": "analyze",
+      "agent_type": "analyst",
+      "capability_mode": "read-only",
+      "output_schema": "candidates",
+      "prompt": [
+        "Extract issues of concern from this source file only.",
+        "Client: {{args.client_name}}",
+        "File: {{f}}",
+        "Read the file with tools. Return up to 20 candidates.",
+        "id format: {{i}}-<short-slug>. Empty list only after reading the file."
+      ]
+    },
+    {
+      "op": "collect",
+      "as": "candidates",
+      "from": "analysis_results",
+      "field": "candidates"
+    },
+    {
+      "op": "if_empty",
+      "path": "candidates",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "No candidates.", "issues": [] }
+        }
+      ]
+    },
+    { "op": "phase", "title": "Challenge" },
+    {
+      "op": "parallel",
+      "as": "verdict_results",
+      "over": "candidates",
+      "item_as": "c",
+      "index_as": "vi",
+      "label_prefix": "verify",
+      "agent_type": "skeptic",
+      "capability_mode": "read-only",
+      "output_schema": "verdict",
+      "prompt": [
+        "Adversarially verify this candidate issue against the source.",
+        "Read source_path yourself. real=true only with independent evidence.",
+        "Return the same id.",
+        "Candidate JSON fields to honor:",
+        "Use tools on the source path from the candidate; statement and evidence are in your task context via the orchestrator payload.",
+        "id: {{c.id}}",
+        "kind: {{c.kind}}",
+        "statement: {{c.statement}}",
+        "claimed evidence: {{c.evidence}}",
+        "source_path: {{c.source_path}}"
+      ]
+    },
+    {
+      "op": "zip_filter",
+      "as": "survivors",
+      "dropped_as": "dropped",
+      "left": "candidates",
+      "right": "verdict_results"
+    },
+    {
+      "op": "if_empty",
+      "path": "survivors",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "None survived challenge.", "issues": [] }
+        }
+      ]
+    },
+    {
+      "op": "complete",
+      "value": {
+        "summary": "challenge complete",
+        "issues": { "$ref": "survivors" },
+        "dropped": { "$ref": "dropped" }
+      }
+    }
+  ]
+}
