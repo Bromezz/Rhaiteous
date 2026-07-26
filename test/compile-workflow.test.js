@@ -18,6 +18,7 @@ const here = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
 const repoRoot = nodePath.resolve(here, "..");
 const minimalPath = nodePath.join(repoRoot, "examples", "minimal.workflow.json");
 const clientPath = nodePath.join(repoRoot, "examples", "client-issues.workflow.json");
+const examplesBase = nodePath.join(repoRoot, "examples", "rhaiteous");
 
 //compile the minimal example without writing
 nodeTest.test("compiles minimal.workflow.json", function testMinimal() {
@@ -29,9 +30,9 @@ nodeTest.test("compiles minimal.workflow.json", function testMinimal() {
   //load example
   workflow = compileMod.readJsonFile(minimalPath);
 
-  //compile against example dir for schemas
+  //compile against examples/rhaiteous for schemas + prompts
   result = compileMod.compileWorkflow(workflow, {
-    baseDir: nodePath.dirname(minimalPath), //schema root
+    base: examplesBase, //asset root
   });
 
   //name preserved
@@ -44,6 +45,11 @@ nodeTest.test("compiles minimal.workflow.json", function testMinimal() {
   //schema loaded as real JSON and emitted
   nodeAssert.match(result.rhai, /let summary_schema = #\{/);
   nodeAssert.match(result.rhai, /"type": "object"/);
+
+  //prompt file loaded with banner and template refs
+  nodeAssert.match(result.rhai, /===== \[minimal-summarize\.txt\] =====/);
+  nodeAssert.match(result.rhai, /Subject: /);
+  nodeAssert.match(result.rhai, /p \+= target;/);
 
   //args pause for required target
   nodeAssert.match(result.rhai, /Pass args\.target/);
@@ -70,7 +76,7 @@ nodeTest.test("compiles client-issues.workflow.json with parallel and zip_filter
 
   //compile
   result = compileMod.compileWorkflow(workflow, {
-    baseDir: nodePath.dirname(clientPath), //schema root
+    base: examplesBase, //asset root
   });
 
   //expected constructs
@@ -82,6 +88,20 @@ nodeTest.test("compiles client-issues.workflow.json with parallel and zip_filter
   nodeAssert.match(result.rhai, /zip_filter/);
   nodeAssert.match(result.rhai, /let survivors = \[\];/);
   nodeAssert.match(result.rhai, /agent_type: "skeptic"/);
+
+  //evidence is array-shaped in schemas and zip_filter
+  nodeAssert.match(result.rhai, /"source"/);
+  nodeAssert.match(result.rhai, /"quote"/);
+  //no legacy top-level candidate field (comments may still discuss paths)
+  nodeAssert.doesNotMatch(result.rhai, /"source_path"/);
+  nodeAssert.match(result.rhai, /v\.output\.evidence\.len\(\) > 0/);
+  //schema authoring notes travel with the IR via $comment
+  nodeAssert.match(result.rhai, /"\$comment"/);
+
+  //prompt files inlined
+  nodeAssert.match(result.rhai, /===== \[client-intake\.txt\] =====/);
+  nodeAssert.match(result.rhai, /===== \[client-analyze\.txt\] =====/);
+  nodeAssert.match(result.rhai, /===== \[client-verify\.txt\] =====/);
 
 //end testClient
 });
@@ -106,6 +126,7 @@ nodeTest.test("compileWorkflowFile writes output", function testWrite() {
     //compile and write
     result = compileMod.compileWorkflowFile(minimalPath, {
       outPath: outPath, //explicit out
+      base: examplesBase, //schemas + prompts
       write: true, //write disk
     });
 
@@ -119,6 +140,7 @@ nodeTest.test("compileWorkflowFile writes output", function testWrite() {
     //content looks like rhai
     text = nodeFs.readFileSync(outPath, "utf8");
     nodeAssert.match(text, /let meta = #\{/);
+    nodeAssert.match(text, /===== \[minimal-summarize\.txt\] =====/);
 
   } finally {
 
@@ -167,11 +189,80 @@ nodeTest.test("rejects unknown step op", function testUnknownOp() {
 
     //compile should fail
     compileMod.compileWorkflow(workflow, {
-      baseDir: repoRoot, //unused
+      base: examplesBase, //unused for this case
     });
 
   //end runCompile
   }, /unsupported op/);
 
 //end testUnknownOp
+});
+
+//missing prompt file fails closed
+nodeTest.test("rejects missing prompt file", function testMissingPrompt() {
+
+  //variables
+  let workflow = null; //doc with bad prompt ref
+
+  //workflow with missing prompt
+  workflow = {
+    name: "missing-prompt", //name
+    description: "should fail on prompt load", //desc
+    schemas: {
+      summary: "summary.schema.json", //valid schema
+    },
+    steps: [
+      {
+        op: "agent", //agent
+        as: "result", //binding
+        prompt: ["does-not-exist.txt"], //missing file
+      },
+    ],
+  };
+
+  //expect throw mentioning the file
+  nodeAssert.throws(function runCompile() {
+
+    //compile should fail
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //real base so schema path exists
+    });
+
+  //end runCompile
+  }, /failed to load prompt file/);
+
+//end testMissingPrompt
+});
+
+//prompt must be an array of file names
+nodeTest.test("rejects inline prompt strings", function testInlinePrompt() {
+
+  //variables
+  let workflow = null; //doc with legacy inline prompt
+
+  //legacy inline lines (no longer valid)
+  workflow = {
+    name: "inline-prompt", //name
+    description: "should fail", //desc
+    steps: [
+      {
+        op: "agent", //agent
+        as: "result", //binding
+        prompt: ["just a line of text, not a file"], //not a real file
+      },
+    ],
+  };
+
+  //expect throw
+  nodeAssert.throws(function runCompile() {
+
+    //compile should fail on missing file (array is required; content is file names)
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //asset base
+    });
+
+  //end runCompile
+  }, /failed to load prompt file/);
+
+//end testInlinePrompt
 });

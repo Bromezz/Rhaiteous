@@ -125,9 +125,55 @@ function readJsonFile(filePath) {
 }
 
 /*
- * @description load schema bindings from paths relative to the workflow file
- * @param schemas - map of binding name → relative path
- * @param baseDir - directory of the workflow JSON file
+ * @description resolve the asset base directory (contains schemas/ and prompts/)
+ * @param options - compiler options that may include base
+ * @returns absolute path to the base directory
+ */
+function resolveBaseDir(options) {
+
+  //variables
+  let base = ""; //requested or default base
+
+  //options may be missing
+  if (!options || typeof options !== "object") {
+
+    //empty options
+    options = {};
+
+  //end options default
+  }
+
+  //explicit base wins (absolute or relative to cwd)
+  if (typeof options.base === "string" && options.base.length > 0) {
+
+    //resolve against process cwd
+    return nodePath.resolve(options.base);
+
+  //end explicit base
+  }
+
+  //legacy alias: baseDir treated as the asset base when base is absent
+  if (typeof options.baseDir === "string" && options.baseDir.length > 0) {
+
+    //resolve against process cwd
+    return nodePath.resolve(options.baseDir);
+
+  //end legacy baseDir
+  }
+
+  //conventional project layout: ./rhaiteous under cwd
+  base = "rhaiteous";
+
+  //absolute base path
+  return nodePath.resolve(process.cwd(), base);
+
+//end resolveBaseDir
+}
+
+/*
+ * @description load schema bindings from files under {base}/schemas
+ * @param schemas - map of binding name → path relative to {base}/schemas
+ * @param baseDir - absolute asset base (contains schemas/ and prompts/)
  * @returns map of binding name → parsed JSON schema object
  */
 function loadSchemas(schemas, baseDir) {
@@ -137,9 +183,10 @@ function loadSchemas(schemas, baseDir) {
   let keys = null; //schema binding names
   let i = 0; //loop index
   let key = ""; //current binding
-  let rel = ""; //relative path
+  let rel = ""; //relative path under schemas/
   let abs = ""; //absolute path
   let doc = null; //parsed schema
+  let schemasDir = ""; //absolute schemas directory
 
   //nothing to load
   if (!schemas || typeof schemas !== "object" || Array.isArray(schemas)) {
@@ -149,6 +196,9 @@ function loadSchemas(schemas, baseDir) {
 
   //end missing-schemas branch
   }
+
+  //schemas live under base/schemas
+  schemasDir = nodePath.join(baseDir, "schemas");
 
   //stable key order
   keys = Object.keys(schemas).sort();
@@ -162,7 +212,7 @@ function loadSchemas(schemas, baseDir) {
     //binding name becomes a Rhai local
     key = assertIdent(keys[i], "schema binding");
 
-    //path value
+    //path value relative to schemas/
     rel = schemas[keys[i]];
 
     //require string path
@@ -174,11 +224,24 @@ function loadSchemas(schemas, baseDir) {
     //end path guard
     }
 
-    //resolve against the workflow directory
-    abs = nodePath.resolve(baseDir, rel);
+    //resolve under {base}/schemas (absolute paths still resolve correctly)
+    abs = nodePath.resolve(schemasDir, rel);
 
-    //parse the schema JSON
-    doc = readJsonFile(abs);
+    //parse the schema JSON (throws with stack on failure)
+    try {
+
+      //read and parse
+      doc = readJsonFile(abs);
+
+    } catch (err) {
+
+      //log and wrap with schema binding context
+      console.error("failed to load schema '" + key + "' from " + abs, err);
+
+      //fail closed
+      throw new Error("failed to load schema '" + key + "' from " + abs + ": " + err.message);
+
+    }
 
     //require an object schema root
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
@@ -202,6 +265,105 @@ function loadSchemas(schemas, baseDir) {
   return loaded;
 
 //end loadSchemas
+}
+
+/*
+ * @description load prompt source files and concatenate them with section banners
+ * @param promptFiles - array of file names relative to {base}/prompts
+ * @param baseDir - absolute asset base (contains schemas/ and prompts/)
+ * @returns concatenated prompt template text (still may contain {{refs}})
+ */
+function loadPromptFiles(promptFiles, baseDir) {
+
+  //variables
+  let i = 0; //file index
+  let rel = ""; //relative path under prompts/
+  let abs = ""; //absolute path
+  let raw = ""; //file text
+  let parts = []; //banner + body chunks
+  let promptsDir = ""; //absolute prompts directory
+  let displayName = ""; //name shown in the banner
+
+  //prompt must be a non-empty array of source file names
+  if (!Array.isArray(promptFiles) || promptFiles.length === 0) {
+
+    //bad shape
+    throw new Error("prompt must be a non-empty array of source file names under prompts/");
+
+  //end array guard
+  }
+
+  //prompts live under base/prompts
+  promptsDir = nodePath.join(baseDir, "prompts");
+
+  //load each referenced file in order
+  i = 0;
+
+  //walk files
+  while (i < promptFiles.length) {
+
+    //file entry
+    rel = promptFiles[i];
+
+    //require non-empty string path
+    if (typeof rel !== "string" || rel.length === 0) {
+
+      //bad entry
+      throw new Error("prompt[" + i + "] must be a non-empty source file name");
+
+    //end entry guard
+    }
+
+    //banner uses the path as authored (basename-friendly for nested files)
+    displayName = rel.split(/[/\\]/).filter(function keepSeg(seg) {
+
+      //drop empty segments
+      return seg.length > 0;
+
+    //end filter
+    }).pop() || rel;
+
+    //resolve under {base}/prompts
+    abs = nodePath.resolve(promptsDir, rel);
+
+    try {
+
+      //read utf-8 text
+      raw = nodeFs.readFileSync(abs, "utf8");
+
+      //strip a leading utf-8 bom when present
+      if (raw.charCodeAt(0) === 0xfeff) {
+
+        //drop bom
+        raw = raw.slice(1);
+
+      //end bom strip
+      }
+
+    } catch (err) {
+
+      //log full stack
+      console.error("failed to load prompt file " + abs, err);
+
+      //fail closed — any missing/unreadable file aborts compile
+      throw new Error("failed to load prompt file '" + rel + "' from " + abs + ": " + err.message);
+
+    }
+
+    //each file is prefaced by newline, banner, newline, then body
+    parts.push("\n===== [" + displayName + "] =====\n");
+    parts.push(raw);
+
+    //next file
+    i += 1;
+
+  //end file walk
+  }
+
+  //joined template text for emitPromptBuild
+  return parts.join("");
+
+//end loadPromptFiles
 }
 
 /*
@@ -700,8 +862,13 @@ function emitAgentStep(step, ctx) {
     indexAs: null, //no loop index
   };
 
-  //build prompt into p
-  promptBuild = templateMod.emitPromptBuild("p", step.prompt, scope, "");
+  //load prompt source files from {base}/prompts, then expand {{templates}}
+  promptBuild = templateMod.emitPromptBuild(
+    "p",
+    loadPromptFiles(step.prompt, ctx.base),
+    scope,
+    ""
+  );
 
   //opts fields
   fields = emitAgentOptsFields(step, "p", ctx.loadedSchemas, "  ");
@@ -781,8 +948,13 @@ function emitParallelStep(step, ctx) {
   scope.knownVars[itemAs] = true;
   scope.knownVars[indexAs] = true;
 
-  //prompt build at loop indent
-  promptBuild = templateMod.emitPromptBuild("p", step.prompt, scope, "  ");
+  //load prompt source files from {base}/prompts, then expand {{templates}}
+  promptBuild = templateMod.emitPromptBuild(
+    "p",
+    loadPromptFiles(step.prompt, ctx.base),
+    scope,
+    "  "
+  );
 
   //job fields (label handled separately for dynamic index)
   fields = emitAgentOptsFields(
@@ -934,7 +1106,8 @@ function emitZipFilterStep(step, ctx) {
   lines.push("let zi = 0;");
   lines.push("for v in " + rightName + " {");
   lines.push("  let cand = " + leftName + "[zi];");
-  lines.push("  if v != () && v.success && v.output.real == true && v.output.evidence != () && v.output.evidence != \"\" {");
+  //evidence is an array of {source, quote}; require a non-empty list
+  lines.push("  if v != () && v.success && v.output.real == true && v.output.evidence != () && v.output.evidence.len() > 0 {");
   lines.push("    " + asName + ".push(cand);");
   lines.push("  } else {");
 
@@ -1654,13 +1827,13 @@ function emitSteps(steps, ctx, indent) {
 /*
  * @description compile a workflow object into Rhai source text
  * @param workflow - parsed workflow document
- * @param options - { baseDir: string }
- * @returns { name, rhai, loadedSchemas }
+ * @param options - { base?: string, baseDir?: string } asset root with schemas/ and prompts/
+ * @returns { name, rhai, loadedSchemas, base }
  */
 function compileWorkflow(workflow, options) {
 
   //variables
-  let baseDir = "."; //schema resolution root
+  let baseDir = ""; //absolute asset base (schemas/ + prompts/)
   let loadedSchemas = null; //binding → schema object
   let argsPreamble = null; //args source + locals
   let ctx = null; //step emit context
@@ -1677,8 +1850,8 @@ function compileWorkflow(workflow, options) {
   //end options default
   }
 
-  //base directory for schemas
-  baseDir = typeof options.baseDir === "string" ? options.baseDir : ".";
+  //asset base: default ./rhaiteous (cwd), override with -b / options.base
+  baseDir = resolveBaseDir(options);
 
   //require object workflow
   if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
@@ -1689,7 +1862,7 @@ function compileWorkflow(workflow, options) {
   //end root guard
   }
 
-  //load schemas from disk
+  //load schemas from {base}/schemas
   loadedSchemas = loadSchemas(workflow.schemas, baseDir);
 
   //args preamble
@@ -1700,6 +1873,7 @@ function compileWorkflow(workflow, options) {
     argsLocals: argsPreamble.argsLocals, //template args
     knownVars: {}, //bindings introduced by steps
     loadedSchemas: loadedSchemas, //schemas
+    base: baseDir, //prompts + schema root
   };
 
   //require steps
@@ -1739,6 +1913,7 @@ function compileWorkflow(workflow, options) {
     //end filter
     }).join("\n") + "\n", //full source
     loadedSchemas: loadedSchemas, //for tests/debug
+    base: baseDir, //resolved asset base
   };
 
 //end compileWorkflow
@@ -1747,14 +1922,14 @@ function compileWorkflow(workflow, options) {
 /*
  * @description compile a workflow JSON file from disk
  * @param workflowPath - path to *.workflow.json
- * @param options - { outPath?: string, write?: boolean }
+ * @param options - { outPath?: string, write?: boolean, base?: string }
  * @returns compile result plus paths
  */
 function compileWorkflowFile(workflowPath, options) {
 
   //variables
   let absIn = ""; //absolute input path
-  let baseDir = ""; //workflow directory
+  let baseDir = ""; //asset base with schemas/ and prompts/
   let workflow = null; //parsed document
   let result = null; //compile result
   let outPath = ""; //output rhai path
@@ -1772,15 +1947,15 @@ function compileWorkflowFile(workflowPath, options) {
   //resolve input
   absIn = nodePath.resolve(workflowPath);
 
-  //base dir for relative schemas
-  baseDir = nodePath.dirname(absIn);
+  //asset base (default cwd/rhaiteous); not the workflow file directory
+  baseDir = resolveBaseDir(options);
 
   //parse workflow JSON
   workflow = readJsonFile(absIn);
 
-  //compile
+  //compile with shared base
   result = compileWorkflow(workflow, {
-    baseDir: baseDir, //schema root
+    base: baseDir, //schemas + prompts root
   });
 
   //default output: .grok/workflows/<name>.rhai under cwd
@@ -1819,6 +1994,7 @@ function compileWorkflowFile(workflowPath, options) {
     name: result.name, //workflow name
     rhai: result.rhai, //source text
     loadedSchemas: result.loadedSchemas, //schemas
+    base: result.base, //resolved asset base
     inputPath: absIn, //input path
     outputPath: outPath, //output path
     written: options.write !== false, //whether written
@@ -1832,6 +2008,8 @@ export default {
   compileWorkflow: compileWorkflow,
   compileWorkflowFile: compileWorkflowFile,
   readJsonFile: readJsonFile,
+  loadPromptFiles: loadPromptFiles,
+  resolveBaseDir: resolveBaseDir,
   jsonToRhai: jsonToRhaiMod.jsonToRhai,
   assertWorkflowName: assertWorkflowName,
 };

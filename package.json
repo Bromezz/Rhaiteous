@@ -18,7 +18,7 @@
   "scripts": {
     "rhaiteous": "node ./bin/rhaiteous.js",
     "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js",
-    "example:compile": "node ./bin/rhaiteous.js ./examples/minimal.workflow.json -o ./examples/out/minimal-summary.rhai"
+    "example:compile": "node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai"
   },
   "keywords": [
     "rhaiteous",

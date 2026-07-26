@@ -3,7 +3,16 @@
 This document defines the **authoring format** consumed by **Rhaiteous** (`rhaiteous`).  
 The compiler emits a single Grok Build Rhai script.
 
-Paths in `schemas` are resolved **relative to the workflow JSON file’s directory**.
+## Asset base
+
+Schemas and prompts resolve under an **asset base** directory (CLI: `-b` / `--base`, library: `options.base`).
+
+| Path | Contents |
+|------|----------|
+| `{base}/schemas/` | JSON Schema files listed in workflow `schemas` |
+| `{base}/prompts/` | Prompt source files listed in each step `prompt` |
+
+Default base is **`./rhaiteous`** relative to the process current working directory (not the workflow file’s directory).
 
 ---
 
@@ -21,7 +30,7 @@ Paths in `schemas` are resolved **relative to the workflow JSON file’s directo
     "label": { "default": "run" }
   },
   "schemas": {
-    "summary": "./schemas/summary.schema.json"
+    "summary": "summary.schema.json"
   },
   "steps": []
 }
@@ -33,7 +42,7 @@ Paths in `schemas` are resolved **relative to the workflow JSON file’s directo
 | `description` | string | yes | Non-empty human summary |
 | `phases` | array | no | Optional; should align with `phase` steps for the `/workflows` UI rail |
 | `args` | object | no | Declares invocation args (see below) |
-| `schemas` | object | no | Map of **binding name** → **relative path** to a JSON Schema file |
+| `schemas` | object | no | Map of **binding name** → path **relative to `{base}/schemas/`** |
 | `steps` | array | yes | Non-empty ordered list of step objects |
 
 ### `name` rules
@@ -98,18 +107,19 @@ At runtime Grok still passes `args` into the script (e.g. `/workflow name {"docs
 
 ```json
 "schemas": {
-  "inventory": "./schemas/inventory.schema.json",
-  "candidates": "./schemas/candidates.schema.json",
-  "verdict": "./schemas/verdict.schema.json"
+  "inventory": "inventory.schema.json",
+  "candidates": "candidates.schema.json",
+  "verdict": "verdict.schema.json"
 }
 ```
 
 | Rule | Detail |
 |------|--------|
 | Binding name | Rhai identifier; becomes `let <name>_schema = #{...};` |
-| Path | Relative to the workflow JSON file; must be a JSON **object** root |
+| Path | Relative to `{base}/schemas/`; must be a JSON **object** root |
 | Count | Any number of entries (including zero) |
 | Authoring | Keep **standard JSON Schema** syntax in those files |
+| Failure | Missing or unreadable schema files fail the compile |
 
 ### Referencing on a step
 
@@ -125,11 +135,38 @@ Use the **binding name**, not the path:
 
 ---
 
-## Prompt templates
+## Prompt files and templates
 
-`prompt` and `log.message` accept a **string** or **array of strings** (arrays are joined with newlines).
+### Step `prompt` (agent / parallel)
 
-Interpolation:
+`prompt` is a **non-empty array of source file names** under `{base}/prompts/`.  
+(URLs may be supported later; v1 is local files only.)
+
+At compile time each file is loaded (failure aborts), then concatenated. **Each** file is prefaced with:
+
+```text
+<newline>===== [<file name>] =====<newline>
+```
+
+followed by the file body. The resulting text may still contain `{{templates}}`, which are expanded into Rhai string-building statements.
+
+Example:
+
+```json
+"prompt": ["client-analyze.txt"]
+```
+
+```json
+"prompt": ["shared-preamble.txt", "client-analyze.txt"]
+```
+
+Missing or unreadable files **fail the compile**.
+
+### `log.message`
+
+`log.message` remains an inline **string** or **array of strings** (arrays joined with newlines). It is **not** loaded from `prompts/`.
+
+### Interpolation (in prompt files and log messages)
 
 | Token | Meaning |
 |-------|---------|
@@ -141,14 +178,12 @@ Interpolation:
 
 Unknown roots fail at **compile** time.
 
-Example:
+Example prompt file body (`client-analyze.txt`):
 
-```json
-"prompt": [
-  "Client: {{args.client_name}}",
-  "File: {{f}}",
-  "Index: {{i}}"
-]
+```text
+Client: {{args.client_name}}
+File: {{f}}
+Index: {{i}}
 ```
 
 ---
@@ -195,14 +230,14 @@ Single subagent invocation.
   "agent_type": "stickler",
   "capability_mode": "read-only",
   "output_schema": "inventory",
-  "prompt": ["Inventory {{args.docs_dir}}"]
+  "prompt": ["client-intake.txt"]
 }
 ```
 
 | Field | Required | Notes |
 |-------|----------|--------|
 | `as` | yes | Result binding name |
-| `prompt` | yes | Template string or lines |
+| `prompt` | yes | Array of file names under `{base}/prompts/` |
 | `label` | no | Static job label |
 | `agent_type` | no | Grok agent type (e.g. custom `analyst`) |
 | `capability_mode` | no | `read-only` \| `read-write` \| `execute` \| `all` |
@@ -239,7 +274,7 @@ Fan-out: one job per element of an array binding.
   "agent_type": "analyst",
   "capability_mode": "read-only",
   "output_schema": "candidates",
-  "prompt": ["Extract issues from {{f}} (shard {{i}})"]
+  "prompt": ["client-analyze.txt"]
 }
 ```
 
@@ -247,7 +282,7 @@ Fan-out: one job per element of an array binding.
 |-------|----------|--------|
 | `as` | yes | Binding for `parallel(...)` results array |
 | `over` | yes | Existing array binding to iterate |
-| `prompt` | yes | Per-item template |
+| `prompt` | yes | Array of file names under `{base}/prompts/` (per-item `{{templates}}` still expand) |
 | `item_as` | no | Default `item` |
 | `index_as` | no | Default `index` |
 | `label_prefix` | no | Default = `as`; labels become `prefix:0`, `prefix:1`, … |
@@ -284,7 +319,7 @@ Skips failed / unit slots: requires `r != () && r.success && r.output.<field> !=
 
 ### `zip_filter`
 
-Pair `left[i]` with parallel verdict `right[i]`; keep left items when the verdict is successful and `output.real == true` with non-empty `output.evidence`.
+Pair `left[i]` with parallel verdict `right[i]`; keep left items when the verdict is successful and `output.real == true` with non-empty `output.evidence` (array length &gt; 0). Example schemas treat `evidence` as an array of `{ "source", "quote" }` objects.
 
 ```json
 {

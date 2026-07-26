@@ -53,12 +53,13 @@ This is the same split many systems use (YAML/JSON → engine IR), without waiti
 
 ### Schema pipeline
 
-1. Workflow lists `schemas: { binding: "relative/path.json" }`  
+1. Workflow lists `schemas: { binding: "file.schema.json" }` (paths under `{base}/schemas/`)  
 2. Compiler `JSON.parse`s each file  
 3. Emitter writes `let <binding>_schema = #{ ... };`  
 4. Steps set `output_schema: <binding>_schema`  
+5. Step `prompt` lists files under `{base}/prompts/`; bodies are concatenated with section banners, then `{{templates}}` expand into Rhai string builds  
 
-Authors never maintain the Rhai form.
+Authors never maintain the Rhai form. Default `base` is `./rhaiteous` (CLI `-b` / `--base`).
 
 ### Binding / scope pipeline
 

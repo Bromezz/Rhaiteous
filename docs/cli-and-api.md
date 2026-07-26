@@ -19,9 +19,16 @@ rhaiteous <workflow.json> [options]
 | Option | Description |
 |--------|-------------|
 | `-o`, `--out <path>` | Write Rhai to this path |
+| `-b`, `--base <path>` | Asset base directory containing `schemas/` and `prompts/` (default: `rhaiteous` under cwd) |
 | `--stdout` | Print Rhai to **stdout**; do not write a file |
 | `--dry-run` | Compile only; do not write |
 | `-h`, `--help` | Print help to stderr |
+
+### Asset base
+
+Schemas resolve as `{base}/schemas/<path-from-workflow>`.  
+Prompt files resolve as `{base}/prompts/<name-from-step>`.  
+Default base is `./rhaiteous` relative to the **current working directory**.
 
 ### Default output path
 
@@ -49,17 +56,17 @@ relative to the **current working directory** (not the workflow file’s directo
 ### Examples
 
 ```bash
-# project-local Grok discovery path
+# project-local Grok discovery path (uses ./rhaiteous for assets)
 rhaiteous ./workflows/client-issues.workflow.json
 
-# explicit path
-rhaiteous ./workflows/client-issues.workflow.json -o ./dist/client-issues.rhai
+# explicit out and asset base
+rhaiteous ./workflows/client-issues.workflow.json -b ./rhaiteous -o ./dist/client-issues.rhai
 
 # CI compile check
 rhaiteous ./workflows/client-issues.workflow.json --dry-run
 
-# capture IR
-rhaiteous ./examples/minimal.workflow.json --stdout > /tmp/out.rhai
+# repo examples (base is not the default)
+rhaiteous ./examples/minimal.workflow.json -b ./examples/rhaiteous --stdout > /tmp/out.rhai
 ```
 
 ---
@@ -89,7 +96,8 @@ Compile an in-memory workflow document.
 | Name | Type | Description |
 |------|------|-------------|
 | `workflow` | object | Parsed workflow JSON |
-| `options.baseDir` | string | Directory used to resolve `schemas` paths (default `"."`) |
+| `options.base` | string | Asset base with `schemas/` and `prompts/` (default `./rhaiteous` under cwd) |
+| `options.baseDir` | string | Legacy alias for `options.base` |
 
 **Returns**
 
@@ -97,11 +105,12 @@ Compile an in-memory workflow document.
 {
   name: string,           // workflow.name
   rhai: string,           // full Rhai source
-  loadedSchemas: object   // binding → parsed schema object
+  loadedSchemas: object,  // binding → parsed schema object
+  base: string            // resolved absolute asset base
 }
 ```
 
-**Throws** on validation / emit errors.
+**Throws** on validation / emit errors (including missing schema or prompt files).
 
 ### `compileWorkflowFile(workflowPath, options?)`
 
@@ -113,9 +122,10 @@ Read a workflow file from disk, compile, optionally write.
 |------|------|-------------|
 | `workflowPath` | string | Path to `*.workflow.json` |
 | `options.outPath` | string | Output `.rhai` path (optional) |
+| `options.base` | string | Asset base with `schemas/` and `prompts/` (default `./rhaiteous` under cwd) |
 | `options.write` | boolean | Write file (default `true`) |
 
-Schema paths resolve relative to the **workflow file’s directory**.
+Schema paths resolve under **`{base}/schemas/`**. Prompt files resolve under **`{base}/prompts/`**.
 
 **Returns**
 
@@ -124,6 +134,7 @@ Schema paths resolve relative to the **workflow file’s directory**.
   name: string,
   rhai: string,
   loadedSchemas: object,
+  base: string,         // absolute asset base
   inputPath: string,    // absolute
   outputPath: string,   // absolute (even if not written)
   written: boolean
@@ -154,6 +165,7 @@ import nodePath from "node:path";
 
 const workflowPath = nodePath.resolve("examples/minimal.workflow.json");
 const result = compileMod.compileWorkflowFile(workflowPath, {
+  base: nodePath.resolve("examples/rhaiteous"),
   outPath: nodePath.resolve(".grok/workflows/minimal-summary.rhai"),
   write: true,
 });
@@ -183,7 +195,7 @@ const workflow = {
   ],
 };
 
-const result = compileMod.compileWorkflow(workflow, { baseDir: process.cwd() });
+const result = compileMod.compileWorkflow(workflow, { base: "./rhaiteous" });
 console.log(result.rhai);
 ```
 

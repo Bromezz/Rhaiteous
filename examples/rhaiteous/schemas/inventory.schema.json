@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/inventory.schema.json",
+  "$comment": "Intake contract for client-issues: list every source file path worth mining, plus a short scope note. Files become the parallel fan-out collection.",
+  "title": "InventoryResult",
+  "type": "object",
+  "required": ["files", "notes"],
+  "properties": {
+    "files": {
+      "$comment": "Absolute or workspace-relative paths the analyst can open with tools. Empty list is allowed but the workflow short-circuits via if_empty.",
+      "type": "array",
+      "items": {
+        "$comment": "One path per entry; prefer stable paths the next stage can read.",
+        "type": "string"
+      }
+    },
+    "notes": {
+      "$comment": "Brief intake narrative (coverage, skipped noise, caveats). Not used as a hard gate.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

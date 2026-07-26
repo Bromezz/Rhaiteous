@@ -9,7 +9,7 @@
     "label": { "default": "run" }
   },
   "schemas": {
-    "summary": "./schemas/summary.schema.json"
+    "summary": "summary.schema.json"
   },
   "steps": [
     { "op": "phase", "title": "Summarize" },
@@ -20,13 +20,7 @@
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "summary",
-      "prompt": [
-        "Summarize the subject below into the required schema.",
-        "Use tools if the subject is a path; otherwise answer from the text.",
-        "Subject: {{args.target}}",
-        "Label: {{args.label}}",
-        "Set ok=true when you produced a usable summary."
-      ]
+      "prompt": ["minimal-summarize.txt"]
     },
     {
       "op": "if_failed",

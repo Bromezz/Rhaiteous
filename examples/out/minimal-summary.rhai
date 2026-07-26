@@ -15,15 +15,18 @@ let meta = #{
 //json schemas loaded from disk (generated; do not hand-edit)
 
 let summary_schema = #{
+  "$comment": "Minimal demo contract: one agent returns a short summary plus a self-assessed ok flag. Used by examples/minimal.workflow.json.",
   "$id": "https://rhaiteous.local/schemas/summary.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: #{
     ok: #{
+      "$comment": "Agent-owned success signal (not the same as the host agent.success). Set true only when summary is usable.",
       description: "Whether the step succeeded on its own terms",
       "type": "boolean",
     },
     summary: #{
+      "$comment": "Human-readable result for the orchestrator UI / complete payload; keep it concise.",
       description: "Short human-readable summary",
       "type": "string",
     },
@@ -46,11 +49,11 @@ phase("Summarize");
 
 //agent step: result
 let p = "";
-p += "Summarize the subject below into the required schema.\nUse tools if the subject is a path; otherwise answer from the text.\nSubject: ";
+p += "\n===== [minimal-summarize.txt] =====\nSummarize the subject below into the required schema.\nUse tools if the subject is a path; otherwise answer from the text.\nSubject: ";
 p += target;
 p += "\nLabel: ";
 p += label;
-p += "\nSet ok=true when you produced a usable summary.";
+p += "\nSet ok=true when you produced a usable summary.\n";
 let result = agent(p, #{
   prompt: p,
   label: "summarize",

@@ -24,8 +24,12 @@ function printUsage() {
     "\n" +
     "Rhaiteous — compile a JSON workflow document into a Grok Build Rhai script.\n" +
     "\n" +
+    "Schemas resolve under <base>/schemas and prompt files under <base>/prompts.\n" +
+    "Default base is ./rhaiteous (relative to the current working directory).\n" +
+    "\n" +
     "Options:\n" +
     "  -o, --out <path>   Output .rhai path (default: .grok/workflows/<name>.rhai)\n" +
+    "  -b, --base <path>  Asset base directory with schemas/ and prompts/ (default: rhaiteous)\n" +
     "  --stdout           Print Rhai to stdout instead of writing a file\n" +
     "  --dry-run          Compile but do not write (implies success on compile only)\n" +
     "  -h, --help         Show this help\n";
@@ -59,6 +63,10 @@ function main() {
         out: {
           type: "string", //output path
           short: "o", //short flag
+        },
+        base: {
+          type: "string", //asset base (schemas/ + prompts/)
+          short: "b", //short flag
         },
         stdout: {
           type: "boolean", //print instead of write
@@ -144,6 +152,7 @@ function main() {
     //compile (and maybe write)
     result = compileMod.compileWorkflowFile(inputPath, {
       outPath: values.out, //optional explicit out
+      base: values.base, //optional asset base (schemas/ + prompts/)
       write: write, //disk write flag
     });
 

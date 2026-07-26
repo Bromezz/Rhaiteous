@@ -1,0 +1,9 @@
+Adversarially verify this candidate issue against its claimed sources.
+real=true only with independent evidence you can confirm (read sources yourself when they are paths or fetchable URLs).
+Return the same id.
+Candidate fields:
+id: {{c.id}}
+kind: {{c.kind}}
+statement: {{c.statement}}
+claimed evidence is an array of {source, quote} on the candidate payload from the orchestrator;
+inspect it carefully and cite your own evidence the same way (array of source+quote objects).

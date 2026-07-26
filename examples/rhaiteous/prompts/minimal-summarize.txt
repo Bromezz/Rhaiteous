@@ -1,0 +1,5 @@
+Summarize the subject below into the required schema.
+Use tools if the subject is a path; otherwise answer from the text.
+Subject: {{args.target}}
+Label: {{args.label}}
+Set ok=true when you produced a usable summary.

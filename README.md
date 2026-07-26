@@ -8,11 +8,12 @@ Grok Build runs multi-agent pipelines as **Rhai** scripts (`.rhai`) under `.grok
 **Rhaiteous** lets you:
 
 - Author workflows as **plain JSON**
-- Keep **real JSON Schema** files on disk (one or many, referenced by name)
+- Keep **real JSON Schema** files under `{base}/schemas/` (default base: `./rhaiteous`)
+- Keep **prompt source files** under `{base}/prompts/` (referenced by name from each step)
 - Compile them into a **Grok-compatible `.rhai`** script
 
 ```text
-*.workflow.json  +  schemas/*.schema.json
+*.workflow.json  +  {base}/schemas/*.schema.json  +  {base}/prompts/*
               │
               ▼
           rhaiteous
@@ -71,6 +72,7 @@ import compileMod from "./src/compile-workflow.js";
 // after publish, e.g.: import compileMod from "rhaiteous";
 
 const result = compileMod.compileWorkflowFile("./examples/minimal.workflow.json", {
+  base: "./examples/rhaiteous",
   outPath: "./.grok/workflows/minimal-summary.rhai",
   write: true,
 });
@@ -82,16 +84,16 @@ console.log(result.outputPath);
 
 ```bash
 # compile the minimal example (writes examples/out/...)
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -o ./examples/out/minimal-summary.rhai
+node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
 
-# default output path: ./.grok/workflows/<name>.rhai
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json
+# default asset base is ./rhaiteous; default out is ./.grok/workflows/<name>.rhai
+node ./bin/rhaiteous.js ./my.workflow.json
 
 # print Rhai to stdout (status on stderr)
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json --stdout
+node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous --stdout
 
 # compile only, no write
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json --dry-run
+node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous --dry-run
 ```
 
 Then in Grok Build (with the `.rhai` under `.grok/workflows/` or `~/.grok/workflows/`):
@@ -100,18 +102,26 @@ Then in Grok Build (with the `.rhai` under `.grok/workflows/` or `~/.grok/workfl
 /workflow minimal-summary {"target":"quarterly planning notes"}
 ```
 
-## Multiple external JSON Schemas
+## Asset base (`schemas/` + `prompts/`)
 
-Yes — that is a primary feature.
+By convention, project assets live under **`./rhaiteous`** (override with **`-b` / `--base`**):
 
-Declare schemas by **name → file path** (paths are relative to the workflow JSON file):
+```text
+rhaiteous/
+  schemas/     # *.schema.json referenced from workflow "schemas"
+  prompts/     # prompt source files listed in each step's "prompt"
+```
+
+### Multiple external JSON Schemas
+
+Declare schemas by **name → path relative to `{base}/schemas`**:
 
 ```json
 {
   "schemas": {
-    "inventory": "./schemas/inventory.schema.json",
-    "candidates": "./schemas/candidates.schema.json",
-    "verdict": "./schemas/verdict.schema.json"
+    "inventory": "inventory.schema.json",
+    "candidates": "candidates.schema.json",
+    "verdict": "verdict.schema.json"
   }
 }
 ```
@@ -123,21 +133,22 @@ Reference them on steps by **name** (not path):
   "op": "agent",
   "as": "intake",
   "output_schema": "inventory",
-  "prompt": ["Inventory docs under {{args.docs_dir}}"]
+  "prompt": ["client-intake.txt"]
 }
 ```
 
-The compiler loads each file as normal JSON Schema and emits:
+### Prompt files
 
-```rhai
-let inventory_schema = #{ /* ... generated map ... */ };
-// ...
-output_schema: inventory_schema,
+Each step `prompt` is an **array of source file names** under `{base}/prompts/`. Files are loaded at compile time, concatenated (each prefaced with a banner), then `{{templates}}` are expanded into Rhai string builds. Missing files fail the compile.
+
+```text
+===== [client-intake.txt] =====
+…file body…
 ```
 
-You never hand-author the Rhai form of those schemas.
+You never hand-author the Rhai form of those schemas or prompt bodies.
 
-See `examples/client-issues.workflow.json` for three schemas used in one pipeline.
+See `examples/client-issues.workflow.json` for three schemas and prompt files used in one pipeline.
 
 ## Workflow JSON (summary)
 
@@ -149,7 +160,7 @@ Top-level document:
 | `description` | yes | Short summary |
 | `phases` | no | Dashboard phase rail: `{ "title", "detail?" }[]` |
 | `args` | no | Input args → Rhai locals + required-arg pauses |
-| `schemas` | no | Map of binding name → path to `.schema.json` |
+| `schemas` | no | Map of binding name → path under `{base}/schemas/` |
 | `steps` | yes | Ordered orchestration steps |
 
 **Step ops (v1):**
@@ -176,6 +187,7 @@ Full field reference: **[docs/workflow-json.md](./docs/workflow-json.md)**.
 rhaiteous <workflow.json> [options]
 
   -o, --out <path>   Output .rhai path (default: .grok/workflows/<name>.rhai)
+  -b, --base <path>  Asset base with schemas/ and prompts/ (default: rhaiteous)
   --stdout           Print Rhai to stdout (no file write)
   --dry-run          Compile only; do not write
   -h, --help         Help
@@ -194,7 +206,9 @@ src/
   template.js               {{args.x}} / loop refs → string build
 examples/
   *.workflow.json           Authoring examples
-  schemas/*.schema.json     Real JSON Schema files
+  rhaiteous/
+    schemas/*.schema.json   Real JSON Schema files
+    prompts/*               Prompt source files
   out/*.rhai                Sample generated IR (optional to commit)
 test/                       node:test suite
 docs/                       Extended documentation
@@ -220,8 +234,8 @@ More context: **[docs/design.md](./docs/design.md)**.
 Regenerate sample IR:
 
 ```bash
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -o ./examples/out/minimal-summary.rhai
-node ./bin/rhaiteous.js ./examples/client-issues.workflow.json -o ./examples/out/client-issues.rhai
+node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
+node ./bin/rhaiteous.js ./examples/client-issues.workflow.json -b ./examples/rhaiteous -o ./examples/out/client-issues.rhai
 ```
 
 ## Tests

@@ -23,30 +23,56 @@ let meta = #{
 //json schemas loaded from disk (generated; do not hand-edit)
 
 let candidates_schema = #{
+  "$comment": "Analyst output for client-issues: issues of concern extracted from a single source file. Collected across parallel shards, then challenged by skeptics.",
   "$id": "https://rhaiteous.local/schemas/candidates.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: #{
     candidates: #{
+      "$comment": "Zero or more candidate issues from this shard only. Cap keeps parallel challenge cost bounded.",
       items: #{
+        "$comment": "One candidate issue. id must stay stable into the verdict stage so zip_filter can pair left/right.",
         additionalProperties: false,
         properties: #{
           confidence: #{
+            "$comment": "Optional self-rated confidence (e.g. high/medium/low). Not required; skeptics should not treat it as proof.",
             "type": "string",
           },
           evidence: #{
-            "type": "string",
+            "$comment": "Supporting excerpts. Prefer multiple items when several sources back the same claim. Locator lives on each item as source (path, URL, or other ref)—no redundant top-level path field on the candidate.",
+            items: #{
+              "$comment": "One citation: where it came from + what it said.",
+              additionalProperties: false,
+              properties: #{
+                quote: #{
+                  "$comment": "Verbatim or near-verbatim excerpt that supports the statement.",
+                  description: "Supporting excerpt from that source",
+                  "type": "string",
+                },
+                source: #{
+                  "$comment": "Locator for the quote: file path today; may be a URL or other reference later.",
+                  description: "Where the quote came from (path, URL, or other locator)",
+                  "type": "string",
+                },
+              },
+              required: [
+                "source",
+                "quote",
+              ],
+              "type": "object",
+            },
+            "type": "array",
           },
           id: #{
+            "$comment": "Stable identifier, e.g. {shardIndex}-{short-slug}. Returned unchanged by the skeptic verdict schema.",
             "type": "string",
           },
           kind: #{
-            "type": "string",
-          },
-          source_path: #{
+            "$comment": "Coarse category label (risk, obligation, inconsistency, open question, …). Free string for demo flexibility.",
             "type": "string",
           },
           statement: #{
+            "$comment": "The issue claim in plain language—what a human would put in a findings list.",
             "type": "string",
           },
         },
@@ -55,7 +81,6 @@ let candidates_schema = #{
           "kind",
           "statement",
           "evidence",
-          "source_path",
         ],
         "type": "object",
       },
@@ -71,17 +96,21 @@ let candidates_schema = #{
 };
 
 let inventory_schema = #{
+  "$comment": "Intake contract for client-issues: list every source file path worth mining, plus a short scope note. Files become the parallel fan-out collection.",
   "$id": "https://rhaiteous.local/schemas/inventory.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: #{
     files: #{
+      "$comment": "Absolute or workspace-relative paths the analyst can open with tools. Empty list is allowed but the workflow short-circuits via if_empty.",
       items: #{
+        "$comment": "One path per entry; prefer stable paths the next stage can read.",
         "type": "string",
       },
       "type": "array",
     },
     notes: #{
+      "$comment": "Brief intake narrative (coverage, skipped noise, caveats). Not used as a hard gate.",
       "type": "string",
     },
   },
@@ -94,20 +123,46 @@ let inventory_schema = #{
 };
 
 let verdict_schema = #{
+  "$comment": "Skeptic output for client-issues: adversarial check of one candidate. zip_filter keeps the left-side candidate when real==true and evidence is a non-empty array.",
   "$id": "https://rhaiteous.local/schemas/verdict.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   additionalProperties: false,
   properties: #{
     evidence: #{
-      "type": "string",
+      "$comment": "Independent citations the skeptic verified (not a blind copy of the candidate's claims). Empty array ⇒ zip_filter drops even if real were true.",
+      items: #{
+        "$comment": "Same citation shape as candidates: source + quote. source may be path or URL.",
+        additionalProperties: false,
+        properties: #{
+          quote: #{
+            "$comment": "Excerpt that justifies the real flag (or documents the contradiction when real is false).",
+            description: "Supporting excerpt from that source",
+            "type": "string",
+          },
+          source: #{
+            "$comment": "Locator the skeptic actually consulted.",
+            description: "Where the quote came from (path, URL, or other locator)",
+            "type": "string",
+          },
+        },
+        required: [
+          "source",
+          "quote",
+        ],
+        "type": "object",
+      },
+      "type": "array",
     },
     id: #{
+      "$comment": "Must match the candidate id under review so operators can align verdicts with claims.",
       "type": "string",
     },
     real: #{
+      "$comment": "true only when the issue is independently supportable. false drops the candidate in zip_filter.",
       "type": "boolean",
     },
     reason: #{
+      "$comment": "Short rationale for real/false—what was checked and why it passed or failed.",
       "type": "string",
     },
   },
@@ -131,11 +186,11 @@ phase("Intake");
 
 //agent step: intake
 let p = "";
-p += "Inventory source documents for issue mining.\nClient: ";
+p += "\n===== [client-intake.txt] =====\nInventory source documents for issue mining.\nClient: ";
 p += client_name;
 p += "\nDocs root: ";
 p += docs_dir;
-p += "\nUse list_dir/read tools. Return every relevant file path under that root.\nSkip binaries and noise. notes = brief scope summary.";
+p += "\nUse list_dir/read tools. Return every relevant file path under that root.\nSkip binaries and noise. notes = brief scope summary.\n";
 let intake = agent(p, #{
   prompt: p,
   label: "intake",
@@ -179,13 +234,13 @@ let analysis_results_jobs = [];
 let i = 0;
 for f in files {
   let p = "";
-  p += "Extract issues of concern from this source file only.\nClient: ";
+  p += "\n===== [client-analyze.txt] =====\nExtract issues of concern from this source file only.\nClient: ";
   p += client_name;
   p += "\nFile: ";
   p += f;
   p += "\nRead the file with tools. Return up to 20 candidates.\nid format: ";
   p += i.to_string();
-  p += "-<short-slug>. Empty list only after reading the file.";
+  p += "-<short-slug>. Empty list only after reading the file.\nFor each candidate, evidence is an array of objects with source and quote\n(source may be a file path, URL, or other locator; quote is the supporting excerpt).\n";
   analysis_results_jobs.push(#{
     prompt: p,
     agent_type: "analyst",
@@ -224,16 +279,13 @@ let verdict_results_jobs = [];
 let vi = 0;
 for c in candidates {
   let p = "";
-  p += "Adversarially verify this candidate issue against the source.\nRead source_path yourself. real=true only with independent evidence.\nReturn the same id.\nCandidate JSON fields to honor:\nUse tools on the source path from the candidate; statement and evidence are in your task context via the orchestrator payload.\nid: ";
+  p += "\n===== [client-verify.txt] =====\nAdversarially verify this candidate issue against its claimed sources.\nreal=true only with independent evidence you can confirm (read sources yourself when they are paths or fetchable URLs).\nReturn the same id.\nCandidate fields:\nid: ";
   p += c.id;
   p += "\nkind: ";
   p += c.kind;
   p += "\nstatement: ";
   p += c.statement;
-  p += "\nclaimed evidence: ";
-  p += c.evidence;
-  p += "\nsource_path: ";
-  p += c.source_path;
+  p += "\nclaimed evidence is an array of {source, quote} on the candidate payload from the orchestrator;\ninspect it carefully and cite your own evidence the same way (array of source+quote objects).\n";
   verdict_results_jobs.push(#{
     prompt: p,
     agent_type: "skeptic",
@@ -251,7 +303,7 @@ let dropped = [];
 let zi = 0;
 for v in verdict_results {
   let cand = candidates[zi];
-  if v != () && v.success && v.output.real == true && v.output.evidence != () && v.output.evidence != "" {
+  if v != () && v.success && v.output.real == true && v.output.evidence != () && v.output.evidence.len() > 0 {
     survivors.push(cand);
   } else {
     dropped.push(cand.id);

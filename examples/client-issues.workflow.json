@@ -11,9 +11,9 @@
     "client_name": { "default": "client" }
   },
   "schemas": {
-    "inventory": "./schemas/inventory.schema.json",
-    "candidates": "./schemas/candidates.schema.json",
-    "verdict": "./schemas/verdict.schema.json"
+    "inventory": "inventory.schema.json",
+    "candidates": "candidates.schema.json",
+    "verdict": "verdict.schema.json"
   },
   "steps": [
     { "op": "phase", "title": "Intake" },
@@ -24,13 +24,7 @@
       "agent_type": "stickler",
       "capability_mode": "read-only",
       "output_schema": "inventory",
-      "prompt": [
-        "Inventory source documents for issue mining.",
-        "Client: {{args.client_name}}",
-        "Docs root: {{args.docs_dir}}",
-        "Use list_dir/read tools. Return every relevant file path under that root.",
-        "Skip binaries and noise. notes = brief scope summary."
-      ]
+      "prompt": ["client-intake.txt"]
     },
     {
       "op": "if_failed",
@@ -73,13 +67,7 @@
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "candidates",
-      "prompt": [
-        "Extract issues of concern from this source file only.",
-        "Client: {{args.client_name}}",
-        "File: {{f}}",
-        "Read the file with tools. Return up to 20 candidates.",
-        "id format: {{i}}-<short-slug>. Empty list only after reading the file."
-      ]
+      "prompt": ["client-analyze.txt"]
     },
     {
       "op": "collect",
@@ -108,18 +96,7 @@
       "agent_type": "skeptic",
       "capability_mode": "read-only",
       "output_schema": "verdict",
-      "prompt": [
-        "Adversarially verify this candidate issue against the source.",
-        "Read source_path yourself. real=true only with independent evidence.",
-        "Return the same id.",
-        "Candidate JSON fields to honor:",
-        "Use tools on the source path from the candidate; statement and evidence are in your task context via the orchestrator payload.",
-        "id: {{c.id}}",
-        "kind: {{c.kind}}",
-        "statement: {{c.statement}}",
-        "claimed evidence: {{c.evidence}}",
-        "source_path: {{c.source_path}}"
-      ]
+      "prompt": ["client-verify.txt"]
     },
     {
       "op": "zip_filter",
