@@ -1,5 +1,11 @@
-﻿node_modules/
+node_modules/
 npm-debug.log*
 .DS_Store
 *.log
-.grok/
+
+# Grok local state — re-include compiled workflow IR so it can stay under VC.
+# (Git cannot re-include files under a fully ignored parent directory, so
+# ignore contents of .grok/ rather than the directory entry itself.)
+.grok/*
+!.grok/workflows/
+!.grok/workflows/**

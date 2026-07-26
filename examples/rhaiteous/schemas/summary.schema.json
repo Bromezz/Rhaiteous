@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rhaiteous.local/schemas/summary.schema.json",
-  "$comment": "Minimal demo contract: one agent returns a short summary plus a self-assessed ok flag. Used by examples/minimal.workflow.json.",
+  "$comment": "Minimal demo contract: one agent returns a short summary plus a self-assessed ok flag. Used by examples/rhaiteous/workflows/minimal.workflow.json.",
   "title": "SummaryResult",
   "type": "object",
   "required": ["summary", "ok"],

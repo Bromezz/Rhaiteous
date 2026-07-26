@@ -18,8 +18,8 @@ rhaiteous <workflow.json> [options]
 
 | Option | Description |
 |--------|-------------|
-| `-o`, `--out <path>` | Write Rhai to this path |
-| `-b`, `--base <path>` | Asset base directory containing `schemas/` and `prompts/` (default: `rhaiteous` under cwd) |
+| `-o`, `--out <path>` | Write Rhai to this path (default: project Grok discovery path; see below) |
+| `-b`, `--base <path>` | Asset base directory containing `schemas/` and `prompts/` (default: `rhaiteous` under cwd). Workflow JSON is usually under `{base}/workflows/`. |
 | `--stdout` | Print Rhai to **stdout**; do not write a file |
 | `--dry-run` | Compile only; do not write |
 | `-h`, `--help` | Print help to stderr |
@@ -28,17 +28,25 @@ rhaiteous <workflow.json> [options]
 
 Schemas resolve as `{base}/schemas/<path-from-workflow>`.  
 Prompt files resolve as `{base}/prompts/<name-from-step>`.  
-Default base is `./rhaiteous` relative to the **current working directory**.
+Default base is `./rhaiteous` relative to the **current working directory**.  
+Convention: author `*.workflow.json` under `{base}/workflows/` so the whole authoring tree is version-controlled together.
 
-### Default output path
+### Default output path (Grok project location)
 
-If `--out` is omitted and neither `--stdout` nor `--dry-run` is set:
+If `--out` is omitted and neither `--stdout` nor `--dry-run` is set, the compiler writes **Grok’s project discovery path**:
 
 ```text
 ./.grok/workflows/<workflow.name>.rhai
 ```
 
 relative to the **current working directory** (not the workflow file’s directory). Parent directories are created as needed.
+
+Grok only auto-discovers named workflows from:
+
+- `<repo-root>/.grok/workflows/*.rhai` (project) — **this is the default**
+- `~/.grok/workflows/*.rhai` (user) — pass `-o` explicitly if you want this
+
+To keep generated IR under git when `.grok` is otherwise ignored, see [using-in-a-grok-project.md](./using-in-a-grok-project.md#6-keep-compiled-workflows-in-git-gitignore-exception).
 
 ### Exit codes
 
@@ -56,17 +64,17 @@ relative to the **current working directory** (not the workflow file’s directo
 ### Examples
 
 ```bash
-# project-local Grok discovery path (uses ./rhaiteous for assets)
-rhaiteous ./workflows/client-issues.workflow.json
+# Grok project root: writes ./.grok/workflows/<name>.rhai
+rhaiteous ./rhaiteous/workflows/client-issues.workflow.json
 
 # explicit out and asset base
-rhaiteous ./workflows/client-issues.workflow.json -b ./rhaiteous -o ./dist/client-issues.rhai
+rhaiteous ./rhaiteous/workflows/client-issues.workflow.json -b ./rhaiteous -o ./.grok/workflows/client-issues.rhai
 
 # CI compile check
-rhaiteous ./workflows/client-issues.workflow.json --dry-run
+rhaiteous ./rhaiteous/workflows/client-issues.workflow.json --dry-run
 
-# repo examples (base is not the default)
-rhaiteous ./examples/minimal.workflow.json -b ./examples/rhaiteous --stdout > /tmp/out.rhai
+# package demos in this repo
+rhaiteous ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous --stdout
 ```
 
 ---
@@ -163,10 +171,10 @@ Object keys are sorted for **deterministic** output.
 import compileMod from "./src/compile-workflow.js";
 import nodePath from "node:path";
 
-const workflowPath = nodePath.resolve("examples/minimal.workflow.json");
+const workflowPath = nodePath.resolve("rhaiteous/workflows/minimal-summary.workflow.json");
 const result = compileMod.compileWorkflowFile(workflowPath, {
-  base: nodePath.resolve("examples/rhaiteous"),
-  outPath: nodePath.resolve(".grok/workflows/minimal-summary.rhai"),
+  base: nodePath.resolve("rhaiteous"),
+  // omit outPath → ./.grok/workflows/<name>.rhai under process.cwd()
   write: true,
 });
 

@@ -24,12 +24,17 @@ function printUsage() {
     "\n" +
     "Rhaiteous — compile a JSON workflow document into a Grok Build Rhai script.\n" +
     "\n" +
-    "Schemas resolve under <base>/schemas and prompt files under <base>/prompts.\n" +
+    "Schemas resolve under <base>/schemas, prompts under <base>/prompts.\n" +
+    "Workflow JSON is typically authored under <base>/workflows (under version control).\n" +
     "Default base is ./rhaiteous (relative to the current working directory).\n" +
+    "\n" +
+    "By default the compiler writes Grok-discoverable IR to:\n" +
+    "  ./.grok/workflows/<workflow.name>.rhai\n" +
+    "(project location; also supported by Grok: ~/.grok/workflows/)\n" +
     "\n" +
     "Options:\n" +
     "  -o, --out <path>   Output .rhai path (default: .grok/workflows/<name>.rhai)\n" +
-    "  -b, --base <path>  Asset base directory with schemas/ and prompts/ (default: rhaiteous)\n" +
+    "  -b, --base <path>  Asset base with schemas/, prompts/, workflows/ (default: rhaiteous)\n" +
     "  --stdout           Print Rhai to stdout instead of writing a file\n" +
     "  --dry-run          Compile but do not write (implies success on compile only)\n" +
     "  -h, --help         Show this help\n";

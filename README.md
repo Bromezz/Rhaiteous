@@ -7,19 +7,21 @@ Grok Build runs multi-agent pipelines as **Rhai** scripts (`.rhai`) under `.grok
 
 **Rhaiteous** lets you:
 
-- Author workflows as **plain JSON**
+- Author workflows as **plain JSON** under `{base}/workflows/` (version-controlled)
 - Keep **real JSON Schema** files under `{base}/schemas/` (default base: `./rhaiteous`)
 - Keep **prompt source files** under `{base}/prompts/` (referenced by name from each step)
-- Compile them into a **Grok-compatible `.rhai`** script
+- Compile them into Grok’s **project** discovery path: **`.grok/workflows/<name>.rhai`**
 
 ```text
-*.workflow.json  +  {base}/schemas/*.schema.json  +  {base}/prompts/*
+{base}/workflows/*.workflow.json
+{base}/schemas/*.schema.json
+{base}/prompts/*
               │
               ▼
           rhaiteous
               │
               ▼
-   .grok/workflows/<name>.rhai
+   .grok/workflows/<name>.rhai     ← default output (Grok project location)
               │
               ▼
    /workflow <name> { ...args }
@@ -71,11 +73,15 @@ node ./bin/rhaiteous.js --help
 import compileMod from "./src/compile-workflow.js";
 // after publish, e.g.: import compileMod from "rhaiteous";
 
-const result = compileMod.compileWorkflowFile("./examples/minimal.workflow.json", {
-  base: "./examples/rhaiteous",
-  outPath: "./.grok/workflows/minimal-summary.rhai",
-  write: true,
-});
+const result = compileMod.compileWorkflowFile(
+  "./examples/rhaiteous/workflows/minimal.workflow.json",
+  {
+    base: "./examples/rhaiteous",
+    // omit outPath to write ./.grok/workflows/<name>.rhai
+    outPath: "./.grok/workflows/minimal-summary.rhai",
+    write: true,
+  }
+);
 
 console.log(result.outputPath);
 ```
@@ -83,33 +89,42 @@ console.log(result.outputPath);
 ## Quick start
 
 ```bash
-# compile the minimal example (writes examples/out/...)
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
+# package demos: sample IR under examples/out/ (not the Grok project path)
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
+  -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
 
-# default asset base is ./rhaiteous; default out is ./.grok/workflows/<name>.rhai
-node ./bin/rhaiteous.js ./my.workflow.json
+# in a Grok project (cwd = project root): default out is ./.grok/workflows/<name>.rhai
+rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json
 
 # print Rhai to stdout (status on stderr)
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous --stdout
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
+  -b ./examples/rhaiteous --stdout
 
 # compile only, no write
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous --dry-run
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
+  -b ./examples/rhaiteous --dry-run
 ```
 
-Then in Grok Build (with the `.rhai` under `.grok/workflows/` or `~/.grok/workflows/`):
+Then in Grok Build (project IR under `.grok/workflows/`, or user-global `~/.grok/workflows/`):
 
 ```text
 /workflow minimal-summary {"target":"quarterly planning notes"}
 ```
 
-## Asset base (`schemas/` + `prompts/`)
+**Using this in a Grok project (layout, compile, git):**  
+→ **[docs/using-in-a-grok-project.md](./docs/using-in-a-grok-project.md)**
+
+## Asset base (`workflows/` + `schemas/` + `prompts/`)
 
 By convention, project assets live under **`./rhaiteous`** (override with **`-b` / `--base`**):
 
 ```text
 rhaiteous/
+  workflows/   # *.workflow.json (authoring — keep under VC)
   schemas/     # *.schema.json referenced from workflow "schemas"
   prompts/     # prompt source files listed in each step's "prompt"
+.grok/
+  workflows/   # *.rhai — default compile output (Grok project discovery)
 ```
 
 ### Multiple external JSON Schemas
@@ -148,7 +163,31 @@ Each step `prompt` is an **array of source file names** under `{base}/prompts/`.
 
 You never hand-author the Rhai form of those schemas or prompt bodies.
 
-See `examples/client-issues.workflow.json` for three schemas and prompt files used in one pipeline.
+See `examples/rhaiteous/workflows/client-issues.workflow.json` for three schemas and prompt files used in one pipeline.
+
+### Default Rhai output (project location)
+
+When `-o` / `--out` is omitted, Rhaiteous writes:
+
+```text
+./.grok/workflows/<workflow.name>.rhai
+```
+
+That is the **project** path Grok scans for named `/workflow` launches (user-global alternative: `~/.grok/workflows/`). Parent dirs are created automatically. Use `-o` only when you intentionally want another path (e.g. package demos under `examples/out/`).
+
+### Keeping `.rhai` in git
+
+If your project ignores `.grok/`, exempt the workflow IR so clones stay runnable:
+
+```gitignore
+# Ignore Grok local state, but keep compiled workflows under VC.
+# Do not use a bare ".grok/" line — that blocks re-including children.
+.grok/*
+!.grok/workflows/
+!.grok/workflows/**
+```
+
+Details: [docs/using-in-a-grok-project.md](./docs/using-in-a-grok-project.md#6-keep-compiled-workflows-in-git-gitignore-exception).
 
 ## Workflow JSON (summary)
 
@@ -187,7 +226,7 @@ Full field reference: **[docs/workflow-json.md](./docs/workflow-json.md)**.
 rhaiteous <workflow.json> [options]
 
   -o, --out <path>   Output .rhai path (default: .grok/workflows/<name>.rhai)
-  -b, --base <path>  Asset base with schemas/ and prompts/ (default: rhaiteous)
+  -b, --base <path>  Asset base with schemas/, prompts/, workflows/ (default: rhaiteous)
   --stdout           Print Rhai to stdout (no file write)
   --dry-run          Compile only; do not write
   -h, --help         Help
@@ -205,11 +244,11 @@ src/
   json-to-rhai.js           JSON values → Rhai literals
   template.js               {{args.x}} / loop refs → string build
 examples/
-  *.workflow.json           Authoring examples
   rhaiteous/
-    schemas/*.schema.json   Real JSON Schema files
-    prompts/*               Prompt source files
-  out/*.rhai                Sample generated IR (optional to commit)
+    workflows/*.workflow.json
+    schemas/*.schema.json
+    prompts/*
+  out/*.rhai                Sample IR for this package (demos)
 test/                       node:test suite
 docs/                       Extended documentation
 ```
@@ -228,14 +267,14 @@ More context: **[docs/design.md](./docs/design.md)**.
 
 | Example | What it shows |
 |---------|----------------|
-| [`examples/minimal.workflow.json`](./examples/minimal.workflow.json) | One agent, one schema, args, `if_failed`, `complete_from` |
-| [`examples/client-issues.workflow.json`](./examples/client-issues.workflow.json) | Intake → parallel analysis → parallel challenge → `zip_filter` → complete with `$ref`s |
+| [`examples/rhaiteous/workflows/minimal.workflow.json`](./examples/rhaiteous/workflows/minimal.workflow.json) | One agent, one schema, args, `if_failed`, `complete_from` |
+| [`examples/rhaiteous/workflows/client-issues.workflow.json`](./examples/rhaiteous/workflows/client-issues.workflow.json) | Intake → parallel analysis → parallel challenge → `zip_filter` → complete with `$ref`s |
 
-Regenerate sample IR:
+Regenerate sample IR (package demos → `examples/out/`):
 
 ```bash
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
-node ./bin/rhaiteous.js ./examples/client-issues.workflow.json -b ./examples/rhaiteous -o ./examples/out/client-issues.rhai
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json -b ./examples/rhaiteous -o ./examples/out/client-issues.rhai
 ```
 
 ## Tests

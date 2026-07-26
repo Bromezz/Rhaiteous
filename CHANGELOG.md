@@ -10,13 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Prompt authoring:** step `prompt` is an array of **source file names** under `{base}/prompts/` (no longer inline text lines). Files are concatenated with `===== [name] =====` banners; missing files fail compile.
-- **Asset layout:** schemas resolve under `{base}/schemas/`; default base is `./rhaiteous` (CLI `-b` / `--base`, library `options.base`).
+- **Asset layout:** schemas under `{base}/schemas/`; prompts under `{base}/prompts/`; workflow JSON convention `{base}/workflows/`; default base `./rhaiteous` (`-b` / `--base`).
+- **Default Rhai output:** `.grok/workflows/<name>.rhai` under cwd (Grok **project** discovery path). Documented clearly in CLI help and guides.
 - **Example evidence shape:** `evidence` is an array of `{ "source", "quote" }` objects; removed redundant `source_path`.
 - **zip_filter:** treats non-empty `evidence` via `.len() > 0` (array-friendly).
+- Examples live under `examples/rhaiteous/{workflows,schemas,prompts}/`.
 
 ### Added
 
 - CLI `-b` / `--base` for the asset directory containing `schemas/` and `prompts/`
+- [docs/using-in-a-grok-project.md](./docs/using-in-a-grok-project.md) — project integration, default output, **gitignore exemption** for `.grok/workflows/**`
+- Repo `.gitignore` re-includes `.grok/workflows/**` so compiled IR can be committed
 
 ## [0.1.0] — 2026-07-26
 

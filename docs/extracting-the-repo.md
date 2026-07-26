@@ -34,6 +34,6 @@ git push -u origin main
 
 ```bash
 npm test
-node ./bin/rhaiteous.js ./examples/minimal.workflow.json --dry-run
-node ./bin/rhaiteous.js ./examples/client-issues.workflow.json --dry-run
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous --dry-run
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json -b ./examples/rhaiteous --dry-run
 ```

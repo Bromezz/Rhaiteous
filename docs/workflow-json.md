@@ -9,10 +9,13 @@ Schemas and prompts resolve under an **asset base** directory (CLI: `-b` / `--ba
 
 | Path | Contents |
 |------|----------|
+| `{base}/workflows/` | Convention: `*.workflow.json` authoring files (under VC) |
 | `{base}/schemas/` | JSON Schema files listed in workflow `schemas` |
 | `{base}/prompts/` | Prompt source files listed in each step `prompt` |
 
 Default base is **`./rhaiteous`** relative to the process current working directory (not the workflow file’s directory).
+
+Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discovery). See [using-in-a-grok-project.md](./using-in-a-grok-project.md).
 
 ---
 

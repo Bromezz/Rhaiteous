@@ -1958,15 +1958,15 @@ function compileWorkflowFile(workflowPath, options) {
     base: baseDir, //schemas + prompts root
   });
 
-  //default output: .grok/workflows/<name>.rhai under cwd
+  //default output: Grok project discovery path .grok/workflows/<name>.rhai under cwd
   if (typeof options.outPath === "string" && options.outPath.length > 0) {
 
-    //explicit output
+    //explicit output (e.g. examples/out or ~/.grok/workflows)
     outPath = nodePath.resolve(options.outPath);
 
   } else {
 
-    //conventional Grok project location
+    //project location Grok scans for named /workflow launches
     outPath = nodePath.resolve(process.cwd(), ".grok", "workflows", result.name + ".rhai");
 
   //end out path branch

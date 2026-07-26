@@ -16,8 +16,20 @@ import compileMod from "../src/compile-workflow.js";
 //paths relative to this test file
 const here = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
 const repoRoot = nodePath.resolve(here, "..");
-const minimalPath = nodePath.join(repoRoot, "examples", "minimal.workflow.json");
-const clientPath = nodePath.join(repoRoot, "examples", "client-issues.workflow.json");
+const minimalPath = nodePath.join(
+  repoRoot,
+  "examples",
+  "rhaiteous",
+  "workflows",
+  "minimal.workflow.json"
+);
+const clientPath = nodePath.join(
+  repoRoot,
+  "examples",
+  "rhaiteous",
+  "workflows",
+  "client-issues.workflow.json"
+);
 const examplesBase = nodePath.join(repoRoot, "examples", "rhaiteous");
 
 //compile the minimal example without writing
