@@ -74,6 +74,8 @@ Prefer:
 - Adding a clear new `op` with fail-closed validation  
 - Over dumping raw Rhai escape hatches without structure  
 
+**Branching:** structured `if` / `else_if` / `else` with a **closed** set of `when.kind` values (`empty`, `nonempty`, `failed`, `succeeded`). `if_empty` / `if_failed` remain as sugar (optional `else`). No free-form Rhai predicates.
+
 If an escape hatch is added later, document it as IR leakage and keep it optional.
 
 ## Compatibility

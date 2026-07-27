@@ -250,3 +250,302 @@ nodeTest.test("rejects inline prompt strings", function testInlinePrompt() {
 
 //end testInlinePrompt
 });
+
+//helpers: known agent binding + empty array binding for branch tests
+function baseBranchWorkflow(extraSteps) {
+
+  //synthetic pipeline prefix that introduces intake + items
+  return {
+    name: "branch-demo", //name
+    description: "branching unit test workflow", //desc
+    args: {
+      requests_dir: { required: true }, //prompt template
+      company_name: { default: "Acme Office" }, //prompt template
+      cycle: { default: "twice-weekly" }, //prompt template
+    },
+    steps: [
+      {
+        op: "agent", //agent
+        as: "intake", //result
+        prompt: ["shopping-intake.txt"], //real prompt file under examples base
+      },
+      {
+        op: "bind", //bind
+        as: "items", //array-ish binding name (untyped at compile time)
+        from: "intake", //from agent
+        field: "requests", //field name from shopping schema
+      },
+    ].concat(extraSteps),
+  };
+
+//end baseBranchWorkflow
+}
+
+//structured if / else_if / else
+nodeTest.test("emits if else_if else chain", function testIfChain() {
+
+  //variables
+  let workflow = null; //doc
+  let result = null; //compile
+
+  //multi-way branch
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //structured if
+      when: {
+        kind: "failed", //agent failed
+        path: "intake", //binding
+      },
+      then: [
+        {
+          op: "complete", //exit
+          value: { summary: "failed" }, //payload
+        },
+      ],
+      else_if: [
+        {
+          when: {
+            kind: "empty", //array empty
+            path: "items", //binding
+          },
+          then: [
+            {
+              op: "complete", //exit
+              value: { summary: "empty" }, //payload
+            },
+          ],
+        },
+      ],
+      else: [
+        {
+          op: "log", //continue path
+          message: "ok", //message
+        },
+      ],
+    },
+  ]);
+
+  //compile
+  result = compileMod.compileWorkflow(workflow, {
+    base: examplesBase, //prompts
+  });
+
+  //predicates and structure
+  nodeAssert.match(result.rhai, /if intake == \(\) \|\| !intake\.success \{/);
+  nodeAssert.match(result.rhai, /\} else if items\.len\(\) == 0 \{/);
+  nodeAssert.match(result.rhai, /\} else \{/);
+  nodeAssert.match(result.rhai, /summary: "failed"/);
+  nodeAssert.match(result.rhai, /summary: "empty"/);
+  nodeAssert.match(result.rhai, /log\(m\)/);
+
+//end testIfChain
+});
+
+//when kinds nonempty + succeeded
+nodeTest.test("emits nonempty and succeeded when kinds", function testWhenKinds() {
+
+  //variables
+  let workflow = null; //doc
+  let result = null; //compile
+
+  //branch on success and nonempty
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //if
+      when: {
+        kind: "succeeded", //agent ok
+        path: "intake", //binding
+      },
+      then: [
+        {
+          op: "if", //nested if
+          when: {
+            kind: "nonempty", //array
+            path: "items", //binding
+          },
+          then: [
+            {
+              op: "log", //log
+              message: "go", //msg
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  //compile
+  result = compileMod.compileWorkflow(workflow, {
+    base: examplesBase, //base
+  });
+
+  //predicates
+  nodeAssert.match(result.rhai, /if intake != \(\) && intake\.success \{/);
+  nodeAssert.match(result.rhai, /if items\.len\(\) > 0 \{/);
+
+//end testWhenKinds
+});
+
+//if_empty / if_failed with else
+nodeTest.test("emits else on if_empty and if_failed", function testElseSugar() {
+
+  //variables
+  let workflow = null; //doc
+  let result = null; //compile
+
+  //both sugar ops with else
+  workflow = baseBranchWorkflow([
+    {
+      op: "if_failed", //failed
+      path: "intake", //path
+      then: [
+        {
+          op: "complete", //then
+          value: { summary: "bad" }, //value
+        },
+      ],
+      else: [
+        {
+          op: "log", //else
+          message: "agent ok", //msg
+        },
+      ],
+    },
+    {
+      op: "if_empty", //empty
+      path: "items", //path
+      then: [
+        {
+          op: "complete", //then
+          value: { summary: "none" }, //value
+        },
+      ],
+      else: [
+        {
+          op: "log", //else
+          message: "have items", //msg
+        },
+      ],
+    },
+  ]);
+
+  //compile
+  result = compileMod.compileWorkflow(workflow, {
+    base: examplesBase, //base
+  });
+
+  //else present for both
+  nodeAssert.match(result.rhai, /\/\/if_failed intake/);
+  nodeAssert.match(result.rhai, /\/\/if_empty items/);
+  nodeAssert.match(result.rhai, /agent ok/);
+  nodeAssert.match(result.rhai, /have items/);
+  nodeAssert.match(result.rhai, /\} else \{/);
+
+//end testElseSugar
+});
+
+//unknown when.kind fails closed
+nodeTest.test("rejects unknown when.kind", function testBadWhenKind() {
+
+  //variables
+  let workflow = null; //doc
+
+  //bad kind
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //if
+      when: {
+        kind: "truthy", //unsupported
+        path: "intake", //path
+      },
+      then: [
+        {
+          op: "complete", //then
+          value: { ok: false }, //value
+        },
+      ],
+    },
+  ]);
+
+  //expect throw
+  nodeAssert.throws(function runCompile() {
+
+    //compile
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //base
+    });
+
+  //end run
+  }, /when\.kind must be one of/);
+
+//end testBadWhenKind
+});
+
+//unknown when.path fails closed
+nodeTest.test("rejects unknown when.path", function testBadWhenPath() {
+
+  //variables
+  let workflow = null; //doc
+
+  //unknown path
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //if
+      when: {
+        kind: "empty", //kind
+        path: "nope", //unknown
+      },
+      then: [
+        {
+          op: "complete", //then
+          value: { ok: false }, //value
+        },
+      ],
+    },
+  ]);
+
+  //expect throw
+  nodeAssert.throws(function runCompile() {
+
+    //compile
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //base
+    });
+
+  //end run
+  }, /not a known binding/);
+
+//end testBadWhenPath
+});
+
+//empty then fails closed
+nodeTest.test("rejects empty if.then", function testEmptyThen() {
+
+  //variables
+  let workflow = null; //doc
+
+  //empty then
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //if
+      when: {
+        kind: "failed", //kind
+        path: "intake", //path
+      },
+      then: [], //empty
+    },
+  ]);
+
+  //expect throw
+  nodeAssert.throws(function runCompile() {
+
+    //compile
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //base
+    });
+
+  //end run
+  }, /if\.then must be a non-empty step array/);
+
+//end testEmptyThen
+});

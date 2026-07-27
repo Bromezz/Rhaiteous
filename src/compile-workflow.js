@@ -1407,6 +1407,289 @@ function emitCompleteFromStep(step, ctx) {
 }
 
 /*
+ * @description validate a closed-set when condition
+ * @param when - { kind, path }
+ * @param label - error label (e.g. if.when)
+ * @param ctx - compiler context with knownVars
+ * @returns normalized { kind, path }
+ */
+function assertWhen(when, label, ctx) {
+
+  //variables
+  let kind = ""; //condition kind
+  let pathName = ""; //binding name
+  const kinds = {
+    empty: true, //array length 0
+    nonempty: true, //array length > 0
+    failed: true, //agent missing or !success
+    succeeded: true, //agent present and success
+  };
+
+  //require object
+  if (!when || typeof when !== "object" || Array.isArray(when)) {
+
+    //bad when
+    throw new Error(label + " must be an object with kind and path");
+
+  //end type guard
+  }
+
+  //kind
+  kind = when.kind;
+
+  //require string kind in closed set
+  if (typeof kind !== "string" || !kinds[kind]) {
+
+    //unknown or missing kind
+    throw new Error(
+      label + ".kind must be one of empty, nonempty, failed, succeeded (got " +
+      JSON.stringify(kind) +
+      ")"
+    );
+
+  //end kind guard
+  }
+
+  //path binding
+  pathName = assertIdent(when.path, label + ".path");
+
+  //must be known
+  if (!ctx.knownVars[pathName]) {
+
+    //unknown binding
+    throw new Error(label + ".path '" + pathName + "' is not a known binding");
+
+  //end path guard
+  }
+
+  //normalized when
+  return {
+    kind: kind, //kind
+    path: pathName, //binding
+  };
+
+//end assertWhen
+}
+
+/*
+ * @description emit a Rhai boolean expression for a when condition
+ * @param when - normalized { kind, path } from assertWhen
+ * @returns Rhai expression string
+ */
+function emitWhenExpr(when) {
+
+  //dispatch on closed kinds
+  if (when.kind === "empty") {
+
+    //array empty
+    return when.path + ".len() == 0";
+
+  //end empty
+  }
+
+  if (when.kind === "nonempty") {
+
+    //array nonempty
+    return when.path + ".len() > 0";
+
+  //end nonempty
+  }
+
+  if (when.kind === "failed") {
+
+    //agent failed or missing
+    return when.path + " == () || !" + when.path + ".success";
+
+  //end failed
+  }
+
+  if (when.kind === "succeeded") {
+
+    //agent ok
+    return when.path + " != () && " + when.path + ".success";
+
+  //end succeeded
+  }
+
+  //should be unreachable after assertWhen
+  throw new Error("internal: unhandled when.kind '" + when.kind + "'");
+
+//end emitWhenExpr
+}
+
+/*
+ * @description validate a non-empty step array for a branch body
+ * @param steps - candidate then/else array
+ * @param label - error label
+ * @returns the same array when valid
+ */
+function assertBranchSteps(steps, label) {
+
+  //require non-empty array
+  if (!Array.isArray(steps) || steps.length === 0) {
+
+    //missing body
+    throw new Error(label + " must be a non-empty step array");
+
+  //end guard
+  }
+
+  //ok
+  return steps;
+
+//end assertBranchSteps
+}
+
+/*
+ * @description emit optional else block for if / if_empty / if_failed
+ * @param elseSteps - step array or undefined
+ * @param ctx - compiler context
+ * @param label - error label when else is present but invalid
+ * @returns Rhai source lines for "} else {\n … \n}" or empty string if no else
+ */
+function emitElseBlock(elseSteps, ctx, label) {
+
+  //variables
+  let inner = ""; //else body
+
+  //absent else is fine
+  if (elseSteps === undefined || elseSteps === null) {
+
+    //no else
+    return "";
+
+  //end missing else
+  }
+
+  //validate
+  assertBranchSteps(elseSteps, label);
+
+  //compile body
+  inner = emitSteps(elseSteps, ctx, "  ");
+
+  //else block
+  return "} else {\n" + inner.trimEnd() + "\n}";
+
+//end emitElseBlock
+}
+
+/*
+ * @description emit structured if / else_if / else chain
+ * @param step - if step
+ * @param ctx - compiler context
+ * @returns Rhai source
+ */
+function emitIfStep(step, ctx) {
+
+  //variables
+  let when0 = null; //primary when
+  let cond0 = ""; //primary expression
+  let thenBody = ""; //then steps source
+  let lines = []; //output lines
+  let elseIfList = null; //else_if array
+  let i = 0; //else_if index
+  let branch = null; //current else_if entry
+  let whenN = null; //else_if when
+  let condN = ""; //else_if expression
+  let thenN = ""; //else_if body
+  let elseBlock = ""; //optional else
+
+  //primary when
+  when0 = assertWhen(step.when, "if.when", ctx);
+  cond0 = emitWhenExpr(when0);
+
+  //then required
+  assertBranchSteps(step.then, "if.then");
+  thenBody = emitSteps(step.then, ctx, "  ");
+
+  //open if
+  lines.push("//if " + when0.kind + " " + when0.path);
+  lines.push("if " + cond0 + " {");
+  lines.push(thenBody.trimEnd());
+
+  //optional else_if chain
+  if (step.else_if !== undefined && step.else_if !== null) {
+
+    //must be array
+    if (!Array.isArray(step.else_if)) {
+
+      //bad type
+      throw new Error("if.else_if must be an array of { when, then } objects");
+
+    //end type guard
+    }
+
+    //reject empty array when present (fail closed)
+    if (step.else_if.length === 0) {
+
+      //empty
+      throw new Error("if.else_if must be non-empty when present");
+
+    //end empty guard
+    }
+
+    //walk branches
+    elseIfList = step.else_if;
+    i = 0;
+
+    //each else_if
+    while (i < elseIfList.length) {
+
+      //current branch
+      branch = elseIfList[i];
+
+      //require object
+      if (!branch || typeof branch !== "object" || Array.isArray(branch)) {
+
+        //bad entry
+        throw new Error("if.else_if[" + i + "] must be an object with when and then");
+
+      //end object guard
+      }
+
+      //when + then
+      whenN = assertWhen(branch.when, "if.else_if[" + i + "].when", ctx);
+      condN = emitWhenExpr(whenN);
+      assertBranchSteps(branch.then, "if.else_if[" + i + "].then");
+      thenN = emitSteps(branch.then, ctx, "  ");
+
+      //else if block
+      lines.push("} else if " + condN + " {");
+      lines.push(thenN.trimEnd());
+
+      //next
+      i += 1;
+
+    //end else_if walk
+    }
+
+  //end else_if present
+  }
+
+  //optional else
+  elseBlock = emitElseBlock(step.else, ctx, "if.else");
+
+  //close with else or bare close
+  if (elseBlock.length > 0) {
+
+    //append else (starts with "} else {")
+    lines.push(elseBlock);
+
+  } else {
+
+    //close final if / else if
+    lines.push("}");
+
+  //end else close branch
+  }
+
+  //joined source
+  return lines.join("\n") + "\n";
+
+//end emitIfStep
+}
+
+/*
  * @description emit if_empty: when an array binding has length 0, run nested steps (usually complete)
  * @param step - if_empty step
  * @param ctx - compiler context
@@ -1418,6 +1701,7 @@ function emitIfEmptyStep(step, ctx) {
   let pathName = ""; //array binding
   let lines = []; //source lines
   let inner = ""; //nested steps source
+  let elseBlock = ""; //optional else
 
   //array binding
   pathName = assertIdent(step.path, "if_empty.path");
@@ -1432,22 +1716,32 @@ function emitIfEmptyStep(step, ctx) {
   }
 
   //require then steps
-  if (!Array.isArray(step.then) || step.then.length === 0) {
-
-    //missing then
-    throw new Error("if_empty.then must be a non-empty step array");
-
-  //end then guard
-  }
+  assertBranchSteps(step.then, "if_empty.then");
 
   //compile nested steps
   inner = emitSteps(step.then, ctx, "  ");
+
+  //optional else
+  elseBlock = emitElseBlock(step.else, ctx, "if_empty.else");
 
   //emit if
   lines.push("//if_empty " + pathName);
   lines.push("if " + pathName + ".len() == 0 {");
   lines.push(inner.trimEnd());
-  lines.push("}");
+
+  //else or close
+  if (elseBlock.length > 0) {
+
+    //else branch
+    lines.push(elseBlock);
+
+  } else {
+
+    //close if
+    lines.push("}");
+
+  //end else branch
+  }
 
   //joined source
   return lines.join("\n") + "\n";
@@ -1467,6 +1761,7 @@ function emitIfFailedStep(step, ctx) {
   let pathName = ""; //result binding
   let lines = []; //source lines
   let inner = ""; //nested steps
+  let elseBlock = ""; //optional else
 
   //result binding
   pathName = assertIdent(step.path, "if_failed.path");
@@ -1481,22 +1776,32 @@ function emitIfFailedStep(step, ctx) {
   }
 
   //require then
-  if (!Array.isArray(step.then) || step.then.length === 0) {
-
-    //missing then
-    throw new Error("if_failed.then must be a non-empty step array");
-
-  //end then guard
-  }
+  assertBranchSteps(step.then, "if_failed.then");
 
   //nested steps
   inner = emitSteps(step.then, ctx, "  ");
+
+  //optional else
+  elseBlock = emitElseBlock(step.else, ctx, "if_failed.else");
 
   //emit guard
   lines.push("//if_failed " + pathName);
   lines.push("if " + pathName + " == () || !" + pathName + ".success {");
   lines.push(inner.trimEnd());
-  lines.push("}");
+
+  //else or close
+  if (elseBlock.length > 0) {
+
+    //else branch
+    lines.push(elseBlock);
+
+  } else {
+
+    //close if
+    lines.push("}");
+
+  //end else branch
+  }
 
   //joined source
   return lines.join("\n") + "\n";
@@ -1742,6 +2047,11 @@ function emitSteps(steps, ctx, indent) {
 
       //field bind
       chunk = emitBindStep(step, ctx);
+
+    } else if (step.op === "if") {
+
+      //structured if / else_if / else
+      chunk = emitIfStep(step, ctx);
 
     } else if (step.op === "if_empty") {
 

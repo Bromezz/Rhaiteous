@@ -364,9 +364,66 @@ Emits: `let files = intake.output.files;`
 
 ---
 
+### `if`
+
+Structured multi-way branch with a **closed** set of condition kinds (no free-form Rhai expressions).
+
+```json
+{
+  "op": "if",
+  "when": { "kind": "failed", "path": "intake" },
+  "then": [
+    { "op": "complete", "value": { "summary": "intake failed", "transactions": [] } }
+  ],
+  "else_if": [
+    {
+      "when": { "kind": "empty", "path": "requests" },
+      "then": [
+        { "op": "complete", "value": { "summary": "no requests", "transactions": [] } }
+      ]
+    }
+  ],
+  "else": [
+    { "op": "log", "message": "continuing pipeline" }
+  ]
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `when` | yes | `{ "kind", "path" }` — see kinds below |
+| `then` | yes | Non-empty step array |
+| `else_if` | no | Non-empty array of `{ when, then }` when present |
+| `else` | no | Non-empty step array when present |
+
+**`when.kind` values:**
+
+| `kind` | Emitted Rhai condition |
+|--------|------------------------|
+| `empty` | `path.len() == 0` |
+| `nonempty` | `path.len() > 0` |
+| `failed` | `path == () \|\| !path.success` |
+| `succeeded` | `path != () && path.success` |
+
+`path` must be a **known binding**. Unknown kinds fail at compile time.
+
+Emits:
+
+```rhai
+if <cond0> {
+  // then
+} else if <cond1> {
+  // else_if[0].then
+} else {
+  // else
+}
+```
+
+---
+
 ### `if_empty`
 
-If `path.len() == 0`, run nested `then` steps (usually `complete`).
+If `path.len() == 0`, run nested `then` steps (usually `complete`). Optional `else` when the array is nonempty. Sugar for `if` with `kind: "empty"`.
 
 ```json
 {
@@ -374,6 +431,9 @@ If `path.len() == 0`, run nested `then` steps (usually `complete`).
   "path": "candidates",
   "then": [
     { "op": "complete", "value": { "summary": "No candidates.", "issues": [] } }
+  ],
+  "else": [
+    { "op": "log", "message": "have candidates" }
   ]
 }
 ```
@@ -382,12 +442,13 @@ If `path.len() == 0`, run nested `then` steps (usually `complete`).
 |-------|----------|
 | `path` | yes (array binding) |
 | `then` | yes (non-empty step array) |
+| `else` | no (non-empty step array when present) |
 
 ---
 
 ### `if_failed`
 
-If result is unit or `success` is false, run `then`.
+If result is unit or `success` is false, run `then`. Optional `else` when the agent succeeded. Sugar for `if` with `kind: "failed"`.
 
 ```json
 {
@@ -395,9 +456,18 @@ If result is unit or `success` is false, run `then`.
   "path": "intake",
   "then": [
     { "op": "complete", "value": { "summary": "intake failed", "issues": [] } }
+  ],
+  "else": [
+    { "op": "log", "message": "intake ok" }
   ]
 }
 ```
+
+| Field | Required |
+|-------|----------|
+| `path` | yes (agent result binding) |
+| `then` | yes (non-empty step array) |
+| `else` | no (non-empty step array when present) |
 
 ---
 
@@ -499,7 +569,9 @@ Using an unknown `over` / `from` / `$ref` fails at compile time.
 ## What is not in v1
 
 - Arbitrary Rhai snippets / `import` of other Rhai modules  
-- General expression language in conditions (only `if_empty` / `if_failed`)  
+- Free-form condition expressions (only closed `when.kind` values on `if`, plus `if_empty` / `if_failed` sugar)  
+- Field-level compares, boolean trees of multiple predicates, or custom operators in `when`  
+- General loops (`while`, free `for`) beyond fixed `parallel` / `collect` / `zip_filter` patterns  
 - Compiling *to* JSON Schema (schemas are inputs, not outputs)  
 - Validating agent outputs at compile time against schemas  
 - Nested workflows / calling other workflow files  

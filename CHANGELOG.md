@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-27
+
+### Added
+
+- Structured branching: step op **`if`** with closed `when.kind` values (`empty`, `nonempty`, `failed`, `succeeded`), plus optional **`else_if`** / **`else`**
+- Optional **`else`** on **`if_empty`** and **`if_failed`** (backward compatible)
+- Docs and tests for multi-way branch emission
+
+### Notes
+
+- Backward compatible dialect extension (existing workflows without `else` / `if` unchanged)
+- Compiler package surface still JSON → Rhai; new ops only
+
 ## [0.1.2] — 2026-07-27
 
 ### Added

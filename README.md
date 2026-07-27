@@ -68,7 +68,7 @@ npx rhaiteous --help
 Pin a version in CI/scripts when you want reproducible compiles:
 
 ```bash
-npx rhaiteous@0.1.2 ./rhaiteous/workflows/my.workflow.json
+npx rhaiteous@0.2.0 ./rhaiteous/workflows/my.workflow.json
 ```
 
 ### Global CLI (optional)
@@ -654,7 +654,8 @@ Top-level document:
 | `collect` | Merge `output.<field>` arrays from parallel results |
 | `zip_filter` | Keep left items whose parallel verdict has `real: true` |
 | `bind` | `let x = agent.output.field` |
-| `if_empty` / `if_failed` | Conditional nested steps |
+| `if` | Structured branch: `when` + `then` + optional `else_if` / `else` |
+| `if_empty` / `if_failed` | Conditional nested steps (optional `else`) |
 | `complete` | End run (supports `{ "$ref": "binding" }`) |
 | `complete_from` | `complete(agent.output)` (+ optional static extras) |
 | `pause` / `await_user` | Human gates |

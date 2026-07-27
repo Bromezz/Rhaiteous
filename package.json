@@ -1,6 +1,6 @@
 {
   "name": "rhaiteous",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "description": "Rhaiteous — compile JSON + JSON Schema workflow definitions into Grok Build Rhai scripts",
   "license": "MIT",
