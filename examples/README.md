@@ -26,6 +26,7 @@ In a real Grok Build project, the same shape lives at the repo root as `./rhaite
 - Stations: Intake → Inventory → Audit (`zip_filter`) → Procurement → Purchasing
 - Schemas: `shopping-requests`, `shopping-items`, `shopping-audit`, `shopping-vendor-pick`, `shopping-purchase-one`
 - Prompts: `shopping-intake.txt` … `shopping-purchasing.txt`
+- **Branching:** `if_failed`/`if_empty` with `else`; multi-way `if` / `else_if` / `else` after audit; final `if`/`else` on transactions
 - `evidence` is an array of `{ "source", "quote" }`
 
 ```bash

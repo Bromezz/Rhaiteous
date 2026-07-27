@@ -87,6 +87,16 @@ nodeTest.test("compiles office-shopping.workflow.json", function testShopping() 
   nodeAssert.match(result.rhai, /===== \[shopping-procurement\.txt\] =====/);
   nodeAssert.match(result.rhai, /===== \[shopping-purchasing\.txt\] =====/);
 
+  //branching: else on if_failed / if_empty, multi-way if after audit, final if on transactions
+  nodeAssert.match(result.rhai, /\/\/if_failed intake/);
+  nodeAssert.match(result.rhai, /Intake agent succeeded/);
+  nodeAssert.match(result.rhai, /\/\/if empty survivors/);
+  nodeAssert.match(result.rhai, /\} else if dropped_items\.len\(\) > 0 \{/);
+  nodeAssert.match(result.rhai, /some items dropped/);
+  nodeAssert.match(result.rhai, /all items passed/);
+  nodeAssert.match(result.rhai, /\/\/if empty transactions/);
+  nodeAssert.match(result.rhai, /no recorded transactions/);
+
 //end testShopping
 });
 

@@ -39,6 +39,12 @@
           "op": "complete",
           "value": { "summary": "intake failed", "transactions": [] }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake agent succeeded for {{args.company_name}}"
+        }
       ]
     },
     {
@@ -55,11 +61,13 @@
           "op": "complete",
           "value": { "summary": "No supply requests this cycle.", "transactions": [] }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake complete for {{args.company_name}} ({{args.cycle}})"
+        }
       ]
-    },
-    {
-      "op": "log",
-      "message": "Intake complete for {{args.company_name}} ({{args.cycle}})"
     },
 
     { "op": "phase", "title": "Inventory" },
@@ -89,6 +97,12 @@
           "op": "complete",
           "value": { "summary": "No line items to buy.", "transactions": [] }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Inventory produced line items for {{args.company_name}}"
+        }
       ]
     },
 
@@ -113,8 +127,8 @@
       "right": "audit_results"
     },
     {
-      "op": "if_empty",
-      "path": "survivors",
+      "op": "if",
+      "when": { "kind": "empty", "path": "survivors" },
       "then": [
         {
           "op": "complete",
@@ -124,11 +138,24 @@
             "transactions": []
           }
         }
+      ],
+      "else_if": [
+        {
+          "when": { "kind": "nonempty", "path": "dropped_items" },
+          "then": [
+            {
+              "op": "log",
+              "message": "Audit complete for {{args.company_name}} (some items dropped)"
+            }
+          ]
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Audit complete for {{args.company_name}} (all items passed)"
+        }
       ]
-    },
-    {
-      "op": "log",
-      "message": "Audit complete for {{args.company_name}}"
     },
 
     { "op": "phase", "title": "Procurement" },
@@ -162,6 +189,12 @@
             "transactions": []
           }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Procurement ready for {{args.company_name}}"
+        }
       ]
     },
 
@@ -185,15 +218,34 @@
       "field": "transactions"
     },
     {
-      "op": "complete",
-      "value": {
-        "summary": "office shopping cycle complete",
-        "requests": { "$ref": "requests" },
-        "items_audited": { "$ref": "survivors" },
-        "dropped": { "$ref": "dropped_items" },
-        "vendor_picks": { "$ref": "vendor_picks" },
-        "transactions": { "$ref": "transactions" }
-      }
+      "op": "if",
+      "when": { "kind": "empty", "path": "transactions" },
+      "then": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle finished with no recorded transactions",
+            "requests": { "$ref": "requests" },
+            "items_audited": { "$ref": "survivors" },
+            "dropped": { "$ref": "dropped_items" },
+            "vendor_picks": { "$ref": "vendor_picks" },
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle complete",
+            "requests": { "$ref": "requests" },
+            "items_audited": { "$ref": "survivors" },
+            "dropped": { "$ref": "dropped_items" },
+            "vendor_picks": { "$ref": "vendor_picks" },
+            "transactions": { "$ref": "transactions" }
+          }
+        }
+      ]
     }
   ]
 }

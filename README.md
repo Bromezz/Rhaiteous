@@ -68,7 +68,7 @@ npx rhaiteous --help
 Pin a version in CI/scripts when you want reproducible compiles:
 
 ```bash
-npx rhaiteous@0.2.0 ./rhaiteous/workflows/my.workflow.json
+npx rhaiteous@0.2.1 ./rhaiteous/workflows/my.workflow.json
 ```
 
 ### Global CLI (optional)
@@ -285,16 +285,37 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
   "name": "office-shopping",
   "description": "Twice-weekly office supply cycle: intake requests, inventory items, audit, procure vendors, purchase and record transactions",
   "phases": [
-    { "title": "Intake", "detail": "collect and deposit requests from email, chat, forms" },
-    { "title": "Inventory", "detail": "compile specific items and quantities per request" },
-    { "title": "Audit", "detail": "challenge each line across validity facets" },
-    { "title": "Procurement", "detail": "select a vendor for each surviving item" },
-    { "title": "Purchasing", "detail": "buy and record each transaction" }
+    {
+      "title": "Intake",
+      "detail": "collect and deposit requests from email, chat, forms"
+    },
+    {
+      "title": "Inventory",
+      "detail": "compile specific items and quantities per request"
+    },
+    {
+      "title": "Audit",
+      "detail": "challenge each line across validity facets"
+    },
+    {
+      "title": "Procurement",
+      "detail": "select a vendor for each surviving item"
+    },
+    {
+      "title": "Purchasing",
+      "detail": "buy and record each transaction"
+    }
   ],
   "args": {
-    "requests_dir": { "required": true },
-    "company_name": { "default": "Acme Office" },
-    "cycle": { "default": "twice-weekly" }
+    "requests_dir": {
+      "required": true
+    },
+    "company_name": {
+      "default": "Acme Office"
+    },
+    "cycle": {
+      "default": "twice-weekly"
+    }
   },
   "schemas": {
     "requests": "shopping-requests.schema.json",
@@ -304,7 +325,10 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
     "purchase_one": "shopping-purchase-one.schema.json"
   },
   "steps": [
-    { "op": "phase", "title": "Intake" },
+    {
+      "op": "phase",
+      "title": "Intake"
+    },
     {
       "op": "agent",
       "as": "intake",
@@ -312,29 +336,58 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "agent_type": "stickler",
       "capability_mode": "read-only",
       "output_schema": "requests",
-      "prompt": ["shopping-intake.txt"]
+      "prompt": [
+        "shopping-intake.txt"
+      ]
     },
     {
       "op": "if_failed",
       "path": "intake",
       "then": [
-        { "op": "complete", "value": { "summary": "intake failed", "transactions": [] } }
+        {
+          "op": "complete",
+          "value": {
+            "summary": "intake failed",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake agent succeeded for {{args.company_name}}"
+        }
       ]
     },
-    { "op": "bind", "as": "requests", "from": "intake", "field": "requests" },
+    {
+      "op": "bind",
+      "as": "requests",
+      "from": "intake",
+      "field": "requests"
+    },
     {
       "op": "if_empty",
       "path": "requests",
       "then": [
         {
           "op": "complete",
-          "value": { "summary": "No supply requests this cycle.", "transactions": [] }
+          "value": {
+            "summary": "No supply requests this cycle.",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake complete for {{args.company_name}} ({{args.cycle}})"
         }
       ]
     },
-    { "op": "log", "message": "Intake complete for {{args.company_name}} ({{args.cycle}})" },
-
-    { "op": "phase", "title": "Inventory" },
+    {
+      "op": "phase",
+      "title": "Inventory"
+    },
     {
       "op": "parallel",
       "as": "inventory_results",
@@ -345,18 +398,39 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "items",
-      "prompt": ["shopping-inventory.txt"]
+      "prompt": [
+        "shopping-inventory.txt"
+      ]
     },
-    { "op": "collect", "as": "items", "from": "inventory_results", "field": "items" },
+    {
+      "op": "collect",
+      "as": "items",
+      "from": "inventory_results",
+      "field": "items"
+    },
     {
       "op": "if_empty",
       "path": "items",
       "then": [
-        { "op": "complete", "value": { "summary": "No line items to buy.", "transactions": [] } }
+        {
+          "op": "complete",
+          "value": {
+            "summary": "No line items to buy.",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Inventory produced line items for {{args.company_name}}"
+        }
       ]
     },
-
-    { "op": "phase", "title": "Audit" },
+    {
+      "op": "phase",
+      "title": "Audit"
+    },
     {
       "op": "parallel",
       "as": "audit_results",
@@ -367,7 +441,9 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "agent_type": "skeptic",
       "capability_mode": "read-only",
       "output_schema": "audit",
-      "prompt": ["shopping-audit.txt"]
+      "prompt": [
+        "shopping-audit.txt"
+      ]
     },
     {
       "op": "zip_filter",
@@ -377,22 +453,48 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "right": "audit_results"
     },
     {
-      "op": "if_empty",
-      "path": "survivors",
+      "op": "if",
+      "when": {
+        "kind": "empty",
+        "path": "survivors"
+      },
       "then": [
         {
           "op": "complete",
           "value": {
             "summary": "No items survived audit.",
-            "dropped": { "$ref": "dropped_items" },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
             "transactions": []
           }
         }
+      ],
+      "else_if": [
+        {
+          "when": {
+            "kind": "nonempty",
+            "path": "dropped_items"
+          },
+          "then": [
+            {
+              "op": "log",
+              "message": "Audit complete for {{args.company_name}} (some items dropped)"
+            }
+          ]
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Audit complete for {{args.company_name}} (all items passed)"
+        }
       ]
     },
-    { "op": "log", "message": "Audit complete for {{args.company_name}}" },
-
-    { "op": "phase", "title": "Procurement" },
+    {
+      "op": "phase",
+      "title": "Procurement"
+    },
     {
       "op": "parallel",
       "as": "procurement_results",
@@ -403,9 +505,16 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "vendor_pick",
-      "prompt": ["shopping-procurement.txt"]
+      "prompt": [
+        "shopping-procurement.txt"
+      ]
     },
-    { "op": "collect", "as": "vendor_picks", "from": "procurement_results", "field": "picks" },
+    {
+      "op": "collect",
+      "as": "vendor_picks",
+      "from": "procurement_results",
+      "field": "picks"
+    },
     {
       "op": "if_empty",
       "path": "vendor_picks",
@@ -414,14 +523,24 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
           "op": "complete",
           "value": {
             "summary": "procurement produced no vendor picks",
-            "items": { "$ref": "survivors" },
+            "items": {
+              "$ref": "survivors"
+            },
             "transactions": []
           }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Procurement ready for {{args.company_name}}"
+        }
       ]
     },
-
-    { "op": "phase", "title": "Purchasing" },
+    {
+      "op": "phase",
+      "title": "Purchasing"
+    },
     {
       "op": "parallel",
       "as": "purchase_results",
@@ -432,7 +551,9 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "agent_type": "general-purpose",
       "capability_mode": "execute",
       "output_schema": "purchase_one",
-      "prompt": ["shopping-purchasing.txt"]
+      "prompt": [
+        "shopping-purchasing.txt"
+      ]
     },
     {
       "op": "collect",
@@ -441,15 +562,55 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "field": "transactions"
     },
     {
-      "op": "complete",
-      "value": {
-        "summary": "office shopping cycle complete",
-        "requests": { "$ref": "requests" },
-        "items_audited": { "$ref": "survivors" },
-        "dropped": { "$ref": "dropped_items" },
-        "vendor_picks": { "$ref": "vendor_picks" },
-        "transactions": { "$ref": "transactions" }
-      }
+      "op": "if",
+      "when": {
+        "kind": "empty",
+        "path": "transactions"
+      },
+      "then": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle finished with no recorded transactions",
+            "requests": {
+              "$ref": "requests"
+            },
+            "items_audited": {
+              "$ref": "survivors"
+            },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
+            "vendor_picks": {
+              "$ref": "vendor_picks"
+            },
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle complete",
+            "requests": {
+              "$ref": "requests"
+            },
+            "items_audited": {
+              "$ref": "survivors"
+            },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
+            "vendor_picks": {
+              "$ref": "vendor_picks"
+            },
+            "transactions": {
+              "$ref": "transactions"
+            }
+          }
+        }
+      ]
     }
   ]
 }

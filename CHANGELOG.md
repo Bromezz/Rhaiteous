@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-27
+
+### Changed
+
+- **office-shopping** example uses branching: `else` on `if_failed` / `if_empty`, multi-way `if` / `else_if` / `else` after audit, and final `if` / `else` on transactions
+- Regenerated `examples/out/office-shopping.rhai`; docs/README embed and step tables updated
+
 ## [0.2.0] — 2026-07-27
 
 ### Added

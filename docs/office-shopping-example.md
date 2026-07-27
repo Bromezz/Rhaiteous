@@ -5,7 +5,7 @@ This guide walks through a **complete Rhaiteous example** you can copy, compile,
 By the end you will know:
 
 - What files Rhaiteous needs (workflow, schemas, and prompts)
-- What every step in the workflow does, in plain language
+- What every step in the workflow does, in plain language (including **branching**: `else` arms and multi-way `if` / `else_if` / `else`)
 - How to compile those files into something Grok Build can run
 - How to start the workflow inside Grok Build
 
@@ -232,47 +232,45 @@ The workflow’s `steps` array runs **in order**. Below, **#** is the step numbe
 |---|-----------|--------------------------------|
 | 1 | `phase` | Tells Grok’s progress user interface (UI) that work has entered the **Intake** stage (the phase rail in the workflows dashboard). |
 | 2 | `agent` | Starts **one** subagent (role label `stickler`, tools limited to **read-only**). Gives it the Intake prompt file and the Intake JSON Schema. The agent must deposit structured requests from `requests_dir`. Stores the full agent result under the name **`intake`**. |
-| 3 | `if_failed` | If that agent crashed or reported failure, **stop the whole run** immediately with a short summary and an empty transactions list. No point inventorying nothing trustworthy. |
+| 3 | `if_failed` (+ `else`) | If that agent crashed or reported failure, **stop** with a short summary and empty transactions. **Else** log that intake succeeded (branching sugar with an `else` arm). |
 | 4 | `bind` | From the successful agent result, pull out only the `requests` array and store it under the simpler name **`requests`**. |
-| 5 | `if_empty` | If that array has zero entries, **stop**: there were no supply asks this cycle. |
-| 6 | `log` | Write a progress line naming the company and cycle (using the run arguments). |
+| 5 | `if_empty` (+ `else`) | If that array has zero entries, **stop**: no supply asks this cycle. **Else** log intake complete for company/cycle. |
 
 ### Station: Inventory
 
 | # | Operation | What it does in plain language |
 |---|-----------|--------------------------------|
-| 7 | `phase` | Progress UI: **Inventory** stage. |
-| 8 | `parallel` | For **each** request in `requests`, start an **analyst** subagent (read-only) with the Inventory prompt and schema. Each child sees one request (`req`) and may propose several product lines. All child results are stored as **`inventory_results`**. |
-| 9 | `collect` | From each successful child, take the `items` array and concatenate them into one master list named **`items`**. |
-| 10 | `if_empty` | If nobody proposed anything buyable, **stop** with “No line items to buy.” |
+| 6 | `phase` | Progress UI: **Inventory** stage. |
+| 7 | `parallel` | For **each** request in `requests`, start an **analyst** subagent (read-only) with the Inventory prompt and schema. Each child sees one request (`req`) and may propose several product lines. All child results are stored as **`inventory_results`**. |
+| 8 | `collect` | From each successful child, take the `items` array and concatenate them into one master list named **`items`**. |
+| 9 | `if_empty` (+ `else`) | If nobody proposed anything buyable, **stop** with “No line items to buy.” **Else** log that inventory produced line items. |
 
 ### Station: Audit
 
 | # | Operation | What it does in plain language |
 |---|-----------|--------------------------------|
-| 11 | `phase` | Progress UI: **Audit** stage. |
-| 12 | `parallel` | For **each** line in `items`, start a **skeptic** subagent (read-only) with the Audit prompt and schema. Each child must argue keep-or-drop across several facets (necessity, quantity, duplicates, policy, budget) and attach evidence. Results: **`audit_results`**. |
-| 13 | `zip_filter` | Walk `items` and `audit_results` together by position (index 0 with index 0, and so on). **Keep** the original line item in **`survivors`** only when that audit result succeeded, marked the line `real: true`, and supplied a non-empty `evidence` list. For rejects, push the line’s **id** into **`dropped_items`**. |
-| 14 | `if_empty` | If nothing survived, **stop** and still report which ids were dropped. |
-| 15 | `log` | Progress line: audit finished for this company. |
+| 10 | `phase` | Progress UI: **Audit** stage. |
+| 11 | `parallel` | For **each** line in `items`, start a **skeptic** subagent (read-only) with the Audit prompt and schema. Each child must argue keep-or-drop across several facets (necessity, quantity, duplicates, policy, budget) and attach evidence. Results: **`audit_results`**. |
+| 12 | `zip_filter` | Walk `items` and `audit_results` together by position (index 0 with index 0, and so on). **Keep** the original line item in **`survivors`** only when that audit result succeeded, marked the line `real: true`, and supplied a non-empty `evidence` list. For rejects, push the line’s **id** into **`dropped_items`**. |
+| 13 | `if` / `else_if` / `else` | **Multi-way branch:** if `survivors` is **empty**, stop and report dropped ids; **else if** `dropped_items` is **nonempty**, log that some items were dropped; **else** log that all items passed. (Shows the full structured `if` op.) |
 
 ### Station: Procurement
 
 | # | Operation | What it does in plain language |
 |---|-----------|--------------------------------|
-| 16 | `phase` | Progress UI: **Procurement** stage. |
-| 17 | `parallel` | For **each** surviving line, start an **analyst** (read-only) to choose a vendor and fulfillment path. Results: **`procurement_results`**. |
-| 18 | `collect` | Concatenate each child’s `picks` array into **`vendor_picks`**. |
-| 19 | `if_empty` | If no vendor choices appeared, **stop** (and still include the surviving items in the report for debugging). |
+| 14 | `phase` | Progress UI: **Procurement** stage. |
+| 15 | `parallel` | For **each** surviving line, start an **analyst** (read-only) to choose a vendor and fulfillment path. Results: **`procurement_results`**. |
+| 16 | `collect` | Concatenate each child’s `picks` array into **`vendor_picks`**. |
+| 17 | `if_empty` (+ `else`) | If no vendor choices appeared, **stop** (and still include the surviving items in the report for debugging). **Else** log that procurement is ready. |
 
 ### Station: Purchasing
 
 | # | Operation | What it does in plain language |
 |---|-----------|--------------------------------|
-| 20 | `phase` | Progress UI: **Purchasing** stage. |
-| 21 | `parallel` | For **each** vendor pick, start a **general-purpose** subagent with **execute** capability. It should buy when tools allow, or record an honest **simulated** purchase. Results: **`purchase_results`**. |
-| 22 | `collect` | Concatenate each child’s `transactions` array into **`transactions`** (the cycle ledger). |
-| 23 | `complete` | **End the run successfully.** Build the final report object: a summary string, plus references to the deposited requests, approved items, dropped ids, vendor picks, and transactions. |
+| 18 | `phase` | Progress UI: **Purchasing** stage. |
+| 19 | `parallel` | For **each** vendor pick, start a **general-purpose** subagent with **execute** capability. It should buy when tools allow, or record an honest **simulated** purchase. Results: **`purchase_results`**. |
+| 20 | `collect` | Concatenate each child’s `transactions` array into **`transactions`** (the cycle ledger). |
+| 21 | `if` / `else` | **Final branch:** if `transactions` is **empty**, complete with a “no recorded transactions” summary (still attaching requests, survivors, drops, picks); **else** complete with the full success report including transactions. |
 
 ---
 
@@ -296,16 +294,37 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
   "name": "office-shopping",
   "description": "Twice-weekly office supply cycle: intake requests, inventory items, audit, procure vendors, purchase and record transactions",
   "phases": [
-    { "title": "Intake", "detail": "collect and deposit requests from email, chat, forms" },
-    { "title": "Inventory", "detail": "compile specific items and quantities per request" },
-    { "title": "Audit", "detail": "challenge each line across validity facets" },
-    { "title": "Procurement", "detail": "select a vendor for each surviving item" },
-    { "title": "Purchasing", "detail": "buy and record each transaction" }
+    {
+      "title": "Intake",
+      "detail": "collect and deposit requests from email, chat, forms"
+    },
+    {
+      "title": "Inventory",
+      "detail": "compile specific items and quantities per request"
+    },
+    {
+      "title": "Audit",
+      "detail": "challenge each line across validity facets"
+    },
+    {
+      "title": "Procurement",
+      "detail": "select a vendor for each surviving item"
+    },
+    {
+      "title": "Purchasing",
+      "detail": "buy and record each transaction"
+    }
   ],
   "args": {
-    "requests_dir": { "required": true },
-    "company_name": { "default": "Acme Office" },
-    "cycle": { "default": "twice-weekly" }
+    "requests_dir": {
+      "required": true
+    },
+    "company_name": {
+      "default": "Acme Office"
+    },
+    "cycle": {
+      "default": "twice-weekly"
+    }
   },
   "schemas": {
     "requests": "shopping-requests.schema.json",
@@ -315,7 +334,10 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
     "purchase_one": "shopping-purchase-one.schema.json"
   },
   "steps": [
-    { "op": "phase", "title": "Intake" },
+    {
+      "op": "phase",
+      "title": "Intake"
+    },
     {
       "op": "agent",
       "as": "intake",
@@ -323,7 +345,9 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "agent_type": "stickler",
       "capability_mode": "read-only",
       "output_schema": "requests",
-      "prompt": ["shopping-intake.txt"]
+      "prompt": [
+        "shopping-intake.txt"
+      ]
     },
     {
       "op": "if_failed",
@@ -331,7 +355,16 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "then": [
         {
           "op": "complete",
-          "value": { "summary": "intake failed", "transactions": [] }
+          "value": {
+            "summary": "intake failed",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake agent succeeded for {{args.company_name}}"
         }
       ]
     },
@@ -347,16 +380,23 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "then": [
         {
           "op": "complete",
-          "value": { "summary": "No supply requests this cycle.", "transactions": [] }
+          "value": {
+            "summary": "No supply requests this cycle.",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Intake complete for {{args.company_name}} ({{args.cycle}})"
         }
       ]
     },
     {
-      "op": "log",
-      "message": "Intake complete for {{args.company_name}} ({{args.cycle}})"
+      "op": "phase",
+      "title": "Inventory"
     },
-
-    { "op": "phase", "title": "Inventory" },
     {
       "op": "parallel",
       "as": "inventory_results",
@@ -367,7 +407,9 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "items",
-      "prompt": ["shopping-inventory.txt"]
+      "prompt": [
+        "shopping-inventory.txt"
+      ]
     },
     {
       "op": "collect",
@@ -381,12 +423,23 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "then": [
         {
           "op": "complete",
-          "value": { "summary": "No line items to buy.", "transactions": [] }
+          "value": {
+            "summary": "No line items to buy.",
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Inventory produced line items for {{args.company_name}}"
         }
       ]
     },
-
-    { "op": "phase", "title": "Audit" },
+    {
+      "op": "phase",
+      "title": "Audit"
+    },
     {
       "op": "parallel",
       "as": "audit_results",
@@ -397,7 +450,9 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "agent_type": "skeptic",
       "capability_mode": "read-only",
       "output_schema": "audit",
-      "prompt": ["shopping-audit.txt"]
+      "prompt": [
+        "shopping-audit.txt"
+      ]
     },
     {
       "op": "zip_filter",
@@ -407,25 +462,48 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "right": "audit_results"
     },
     {
-      "op": "if_empty",
-      "path": "survivors",
+      "op": "if",
+      "when": {
+        "kind": "empty",
+        "path": "survivors"
+      },
       "then": [
         {
           "op": "complete",
           "value": {
             "summary": "No items survived audit.",
-            "dropped": { "$ref": "dropped_items" },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
             "transactions": []
           }
+        }
+      ],
+      "else_if": [
+        {
+          "when": {
+            "kind": "nonempty",
+            "path": "dropped_items"
+          },
+          "then": [
+            {
+              "op": "log",
+              "message": "Audit complete for {{args.company_name}} (some items dropped)"
+            }
+          ]
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Audit complete for {{args.company_name}} (all items passed)"
         }
       ]
     },
     {
-      "op": "log",
-      "message": "Audit complete for {{args.company_name}}"
+      "op": "phase",
+      "title": "Procurement"
     },
-
-    { "op": "phase", "title": "Procurement" },
     {
       "op": "parallel",
       "as": "procurement_results",
@@ -436,7 +514,9 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "agent_type": "analyst",
       "capability_mode": "read-only",
       "output_schema": "vendor_pick",
-      "prompt": ["shopping-procurement.txt"]
+      "prompt": [
+        "shopping-procurement.txt"
+      ]
     },
     {
       "op": "collect",
@@ -452,14 +532,24 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
           "op": "complete",
           "value": {
             "summary": "procurement produced no vendor picks",
-            "items": { "$ref": "survivors" },
+            "items": {
+              "$ref": "survivors"
+            },
             "transactions": []
           }
         }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "message": "Procurement ready for {{args.company_name}}"
+        }
       ]
     },
-
-    { "op": "phase", "title": "Purchasing" },
+    {
+      "op": "phase",
+      "title": "Purchasing"
+    },
     {
       "op": "parallel",
       "as": "purchase_results",
@@ -470,7 +560,9 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "agent_type": "general-purpose",
       "capability_mode": "execute",
       "output_schema": "purchase_one",
-      "prompt": ["shopping-purchasing.txt"]
+      "prompt": [
+        "shopping-purchasing.txt"
+      ]
     },
     {
       "op": "collect",
@@ -479,15 +571,55 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "field": "transactions"
     },
     {
-      "op": "complete",
-      "value": {
-        "summary": "office shopping cycle complete",
-        "requests": { "$ref": "requests" },
-        "items_audited": { "$ref": "survivors" },
-        "dropped": { "$ref": "dropped_items" },
-        "vendor_picks": { "$ref": "vendor_picks" },
-        "transactions": { "$ref": "transactions" }
-      }
+      "op": "if",
+      "when": {
+        "kind": "empty",
+        "path": "transactions"
+      },
+      "then": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle finished with no recorded transactions",
+            "requests": {
+              "$ref": "requests"
+            },
+            "items_audited": {
+              "$ref": "survivors"
+            },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
+            "vendor_picks": {
+              "$ref": "vendor_picks"
+            },
+            "transactions": []
+          }
+        }
+      ],
+      "else": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "office shopping cycle complete",
+            "requests": {
+              "$ref": "requests"
+            },
+            "items_audited": {
+              "$ref": "survivors"
+            },
+            "dropped": {
+              "$ref": "dropped_items"
+            },
+            "vendor_picks": {
+              "$ref": "vendor_picks"
+            },
+            "transactions": {
+              "$ref": "transactions"
+            }
+          }
+        }
+      ]
     }
   ]
 }

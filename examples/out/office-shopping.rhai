@@ -430,6 +430,12 @@ if intake == () || !intake.success {
     summary: "intake failed",
     transactions: [],
   });
+} else {
+  //log progress
+  let m = "";
+  m += "Intake agent succeeded for ";
+  m += company_name;
+  log(m);
 }
 
 //bind intake.output.requests → requests
@@ -442,16 +448,16 @@ if requests.len() == 0 {
     summary: "No supply requests this cycle.",
     transactions: [],
   });
+} else {
+  //log progress
+  let m = "";
+  m += "Intake complete for ";
+  m += company_name;
+  m += " (";
+  m += cycle;
+  m += ")";
+  log(m);
 }
-
-//log progress
-let m = "";
-m += "Intake complete for ";
-m += company_name;
-m += " (";
-m += cycle;
-m += ")";
-log(m);
 
 //phase Inventory
 phase("Inventory");
@@ -512,6 +518,12 @@ if items.len() == 0 {
     summary: "No line items to buy.",
     transactions: [],
   });
+} else {
+  //log progress
+  let m = "";
+  m += "Inventory produced line items for ";
+  m += company_name;
+  log(m);
 }
 
 //phase Audit
@@ -560,7 +572,7 @@ for v in audit_results {
   zi += 1;
 }
 
-//if_empty survivors
+//if empty survivors
 if survivors.len() == 0 {
   //complete run
   complete(#{
@@ -568,13 +580,21 @@ if survivors.len() == 0 {
     summary: "No items survived audit.",
     transactions: [],
   });
+} else if dropped_items.len() > 0 {
+  //log progress
+  let m = "";
+  m += "Audit complete for ";
+  m += company_name;
+  m += " (some items dropped)";
+  log(m);
+} else {
+  //log progress
+  let m = "";
+  m += "Audit complete for ";
+  m += company_name;
+  m += " (all items passed)";
+  log(m);
 }
-
-//log progress
-let m = "";
-m += "Audit complete for ";
-m += company_name;
-log(m);
 
 //phase Procurement
 phase("Procurement");
@@ -628,6 +648,12 @@ if vendor_picks.len() == 0 {
     summary: "procurement produced no vendor picks",
     transactions: [],
   });
+} else {
+  //log progress
+  let m = "";
+  m += "Procurement ready for ";
+  m += company_name;
+  log(m);
 }
 
 //phase Purchasing
@@ -670,13 +696,26 @@ for r in purchase_results {
   }
 }
 
-//complete run
-complete(#{
-  dropped: dropped_items,
-  items_audited: survivors,
-  requests: requests,
-  summary: "office shopping cycle complete",
-  transactions: transactions,
-  vendor_picks: vendor_picks,
-});
+//if empty transactions
+if transactions.len() == 0 {
+  //complete run
+  complete(#{
+    dropped: dropped_items,
+    items_audited: survivors,
+    requests: requests,
+    summary: "office shopping cycle finished with no recorded transactions",
+    transactions: [],
+    vendor_picks: vendor_picks,
+  });
+} else {
+  //complete run
+  complete(#{
+    dropped: dropped_items,
+    items_audited: survivors,
+    requests: requests,
+    summary: "office shopping cycle complete",
+    transactions: transactions,
+    vendor_picks: vendor_picks,
+  });
+}
 
