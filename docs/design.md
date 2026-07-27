@@ -76,6 +76,8 @@ Prefer:
 
 **Branching:** structured `if` / `else_if` / `else` with a **closed** set of `when.kind` values (`empty`, `nonempty`, `failed`, `succeeded`). `if_empty` / `if_failed` remain as sugar (optional `else`). No free-form Rhai predicates.
 
+**Assignment:** `set` introduces or reassigns a binding from a JSON/`$ref` value tree (`value` optional → unit `()`). Bindings assigned only inside branch arms are hoisted with `let name = ()` before the branch so they remain visible afterward.
+
 If an escape hatch is added later, document it as IR leakage and keep it optional.
 
 ## Compatibility

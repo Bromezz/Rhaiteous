@@ -879,7 +879,7 @@ function emitAgentStep(step, ctx) {
   lines.push("let " + asName + " = agent(p, #{\n" + fields + "\n});");
 
   //register binding
-  ctx.knownVars[asName] = true;
+  registerBinding(ctx, asName);
 
   //joined source
   return lines.join("\n") + "\n";
@@ -992,7 +992,7 @@ function emitParallelStep(step, ctx) {
   lines.push("let " + asName + " = parallel(" + jobsName + ");");
 
   //register results binding
-  ctx.knownVars[asName] = true;
+  registerBinding(ctx, asName);
 
   //joined source
   return lines.join("\n") + "\n";
@@ -1040,7 +1040,7 @@ function emitCollectStep(step, ctx) {
   lines.push("}");
 
   //register binding
-  ctx.knownVars[asName] = true;
+  registerBinding(ctx, asName);
 
   //joined source
   return lines.join("\n") + "\n";
@@ -1126,13 +1126,13 @@ function emitZipFilterStep(step, ctx) {
   lines.push("}");
 
   //register survivors
-  ctx.knownVars[asName] = true;
+  registerBinding(ctx, asName);
 
   //register dropped when used
   if (droppedAs) {
 
     //known dropped
-    ctx.knownVars[droppedAs] = true;
+    registerBinding(ctx, droppedAs);
 
   //end dropped register
   }
@@ -1407,6 +1407,315 @@ function emitCompleteFromStep(step, ctx) {
 }
 
 /*
+ * @description mark a binding as known and already introduced with let
+ * @param ctx - compiler context
+ * @param name - binding identifier
+ * @returns nothing
+ */
+function registerBinding(ctx, name) {
+
+  //known for refs and when.path
+  ctx.knownVars[name] = true;
+
+  //already has a let (agent/parallel/set first assign)
+  if (!ctx.declaredLets) {
+
+    //defensive init
+    ctx.declaredLets = {};
+
+  //end init
+  }
+
+  //declared
+  ctx.declaredLets[name] = true;
+
+//end registerBinding
+}
+
+/*
+ * @description collect set.as names from a step list (including nested branches)
+ * @param steps - step array or null
+ * @param out - map name → true
+ * @returns nothing
+ */
+function collectSetTargets(steps, out) {
+
+  //variables
+  let i = 0; //index
+  let step = null; //current
+  let j = 0; //else_if index
+  let branch = null; //else_if entry
+
+  //nothing to scan
+  if (!Array.isArray(steps)) {
+
+    //done
+    return;
+
+  //end empty
+  }
+
+  //walk steps
+  i = 0;
+
+  //each step
+  while (i < steps.length) {
+
+    //current
+    step = steps[i];
+
+    //object steps only
+    if (step && typeof step === "object" && !Array.isArray(step)) {
+
+      //set targets
+      if (step.op === "set" && typeof step.as === "string" && step.as.length > 0) {
+
+        //record name (validated later at hoist/set emit)
+        out[step.as] = true;
+
+      //end set
+      }
+
+      //nested then
+      collectSetTargets(step.then, out);
+
+      //nested else
+      collectSetTargets(step.else, out);
+
+      //nested else_if
+      if (Array.isArray(step.else_if)) {
+
+        //walk branches
+        j = 0;
+
+        //each else_if
+        while (j < step.else_if.length) {
+
+          //branch
+          branch = step.else_if[j];
+
+          //then of branch
+          if (branch && typeof branch === "object") {
+
+            //nested
+            collectSetTargets(branch.then, out);
+
+          //end branch object
+          }
+
+          //next
+          j += 1;
+
+        //end else_if walk
+        }
+
+      //end else_if
+      }
+
+    //end object step
+    }
+
+    //next
+    i += 1;
+
+  //end step walk
+  }
+
+//end collectSetTargets
+}
+
+/*
+ * @description hoist let name = () for set targets used inside a branchy step
+ * @param step - if / if_empty / if_failed step
+ * @param ctx - compiler context
+ * @returns Rhai source (may be empty) ending with newline when non-empty
+ */
+function hoistSetBindingsForStep(step, ctx) {
+
+  //variables
+  const names = {}; //set targets
+  let keys = null; //sorted names
+  let i = 0; //index
+  let name = ""; //binding
+  let lines = []; //hoist lets
+
+  //ensure map
+  if (!ctx.declaredLets) {
+
+    //init
+    ctx.declaredLets = {};
+
+  //end init
+  }
+
+  //collect from all arms
+  collectSetTargets(step.then, names);
+  collectSetTargets(step.else, names);
+
+  //else_if arms
+  if (Array.isArray(step.else_if)) {
+
+    //walk
+    i = 0;
+
+    //each
+    while (i < step.else_if.length) {
+
+      //branch then
+      if (step.else_if[i] && step.else_if[i].then) {
+
+        //collect
+        collectSetTargets(step.else_if[i].then, names);
+
+      //end then
+      }
+
+      //next
+      i += 1;
+
+    //end walk
+    }
+
+  //end else_if
+  }
+
+  //stable order
+  keys = Object.keys(names).sort();
+
+  //hoist each new name
+  i = 0;
+
+  //walk names
+  while (i < keys.length) {
+
+    //candidate
+    name = assertIdent(keys[i], "set.as");
+
+    //reject arg collision
+    if (ctx.argsLocals && ctx.argsLocals[name]) {
+
+      //clash
+      throw new Error("set.as '" + name + "' collides with a workflow arg name");
+
+    //end arg guard
+    }
+
+    //already declared → skip hoist
+    if (!ctx.declaredLets[name]) {
+
+      //outer let unit so arms can assign
+      lines.push("//hoist binding for branch assignment");
+      lines.push("let " + name + " = ();");
+
+      //register
+      registerBinding(ctx, name);
+
+    //end hoist one
+    }
+
+    //next
+    i += 1;
+
+  //end name walk
+  }
+
+  //joined or empty
+  if (lines.length === 0) {
+
+    //nothing
+    return "";
+
+  //end empty
+  }
+
+  //source block
+  return lines.join("\n") + "\n";
+
+//end hoistSetBindingsForStep
+}
+
+/*
+ * @description emit set: assign value (or unit) to a binding; works in flow and branches
+ * @param step - set step
+ * @param ctx - compiler context
+ * @returns Rhai source
+ */
+function emitSetStep(step, ctx) {
+
+  //variables
+  let asName = ""; //binding
+  let valueExpr = ""; //rhs
+  let lines = []; //source
+  let isFirst = false; //whether to emit let
+
+  //ensure declared map
+  if (!ctx.declaredLets) {
+
+    //init
+    ctx.declaredLets = {};
+
+  //end init
+  }
+
+  //require as
+  asName = assertIdent(step.as, "set.as");
+
+  //reject arg collision
+  if (ctx.argsLocals && ctx.argsLocals[asName]) {
+
+    //clash
+    throw new Error("set.as '" + asName + "' collides with a workflow arg name");
+
+  //end arg guard
+  }
+
+  //value optional → unit
+  if (step.value === undefined) {
+
+    //unit
+    valueExpr = "()";
+
+  } else {
+
+    //same tree as complete (supports $ref)
+    valueExpr = emitCompleteValue(step.value, ctx, "");
+
+  //end value branch
+  }
+
+  //first introduction vs reassignment
+  isFirst = !ctx.declaredLets[asName];
+
+  //comment
+  lines.push("//set " + asName);
+
+  //emit let or assign
+  if (isFirst) {
+
+    //introduce
+    lines.push("let " + asName + " = " + valueExpr + ";");
+
+    //register
+    registerBinding(ctx, asName);
+
+  } else {
+
+    //reassign (including after hoist)
+    lines.push(asName + " = " + valueExpr + ";");
+
+    //ensure known
+    ctx.knownVars[asName] = true;
+
+  //end first/reassign
+  }
+
+  //joined
+  return lines.join("\n") + "\n";
+
+//end emitSetStep
+}
+
+/*
  * @description validate a closed-set when condition
  * @param when - { kind, path }
  * @param label - error label (e.g. if.when)
@@ -1593,6 +1902,10 @@ function emitIfStep(step, ctx) {
   let condN = ""; //else_if expression
   let thenN = ""; //else_if body
   let elseBlock = ""; //optional else
+  let hoist = ""; //pre-if let unit for set targets
+
+  //hoist set bindings used in any arm
+  hoist = hoistSetBindingsForStep(step, ctx);
 
   //primary when
   when0 = assertWhen(step.when, "if.when", ctx);
@@ -1601,6 +1914,15 @@ function emitIfStep(step, ctx) {
   //then required
   assertBranchSteps(step.then, "if.then");
   thenBody = emitSteps(step.then, ctx, "  ");
+
+  //prepend hoist
+  if (hoist.length > 0) {
+
+    //outer lets
+    lines.push(hoist.trimEnd());
+
+  //end hoist
+  }
 
   //open if
   lines.push("//if " + when0.kind + " " + when0.path);
@@ -1702,6 +2024,7 @@ function emitIfEmptyStep(step, ctx) {
   let lines = []; //source lines
   let inner = ""; //nested steps source
   let elseBlock = ""; //optional else
+  let hoist = ""; //pre-if lets for set
 
   //array binding
   pathName = assertIdent(step.path, "if_empty.path");
@@ -1715,6 +2038,9 @@ function emitIfEmptyStep(step, ctx) {
   //end path guard
   }
 
+  //hoist set targets from then/else
+  hoist = hoistSetBindingsForStep(step, ctx);
+
   //require then steps
   assertBranchSteps(step.then, "if_empty.then");
 
@@ -1723,6 +2049,15 @@ function emitIfEmptyStep(step, ctx) {
 
   //optional else
   elseBlock = emitElseBlock(step.else, ctx, "if_empty.else");
+
+  //hoist first
+  if (hoist.length > 0) {
+
+    //outer lets
+    lines.push(hoist.trimEnd());
+
+  //end hoist
+  }
 
   //emit if
   lines.push("//if_empty " + pathName);
@@ -1762,6 +2097,7 @@ function emitIfFailedStep(step, ctx) {
   let lines = []; //source lines
   let inner = ""; //nested steps
   let elseBlock = ""; //optional else
+  let hoist = ""; //pre-if lets for set
 
   //result binding
   pathName = assertIdent(step.path, "if_failed.path");
@@ -1775,6 +2111,9 @@ function emitIfFailedStep(step, ctx) {
   //end path guard
   }
 
+  //hoist set targets from then/else
+  hoist = hoistSetBindingsForStep(step, ctx);
+
   //require then
   assertBranchSteps(step.then, "if_failed.then");
 
@@ -1783,6 +2122,15 @@ function emitIfFailedStep(step, ctx) {
 
   //optional else
   elseBlock = emitElseBlock(step.else, ctx, "if_failed.else");
+
+  //hoist first
+  if (hoist.length > 0) {
+
+    //outer lets
+    lines.push(hoist.trimEnd());
+
+  //end hoist
+  }
 
   //emit guard
   lines.push("//if_failed " + pathName);
@@ -1842,7 +2190,7 @@ function emitBindStep(step, ctx) {
   lines.push("let " + asName + " = " + fromName + ".output." + field + ";");
 
   //register
-  ctx.knownVars[asName] = true;
+  registerBinding(ctx, asName);
 
   //joined
   return lines.join("\n") + "\n";
@@ -2048,6 +2396,11 @@ function emitSteps(steps, ctx, indent) {
       //field bind
       chunk = emitBindStep(step, ctx);
 
+    } else if (step.op === "set") {
+
+      //assign value or unit to binding
+      chunk = emitSetStep(step, ctx);
+
     } else if (step.op === "if") {
 
       //structured if / else_if / else
@@ -2182,9 +2535,19 @@ function compileWorkflow(workflow, options) {
   ctx = {
     argsLocals: argsPreamble.argsLocals, //template args
     knownVars: {}, //bindings introduced by steps
+    declaredLets: {}, //names already introduced with let
     loadedSchemas: loadedSchemas, //schemas
     base: baseDir, //prompts + schema root
   };
+
+  //args are already let-bound in the preamble
+  Object.keys(argsPreamble.argsLocals).forEach(function markArgDeclared(argName) {
+
+    //arg local exists as let
+    ctx.declaredLets[argName] = true;
+
+  //end forEach
+  });
 
   //require steps
   if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {

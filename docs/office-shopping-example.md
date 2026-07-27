@@ -230,9 +230,10 @@ The workflow’s `steps` array runs **in order**. Below, **#** is the step numbe
 
 | # | Operation | What it does in plain language |
 |---|-----------|--------------------------------|
+| 0 | `set` | Declares **`cycle_status`** as unit `()` so later stations and branches can assign status strings (`intake_ok`, `complete`, …) without free-form Rhai. |
 | 1 | `phase` | Tells Grok’s progress user interface (UI) that work has entered the **Intake** stage (the phase rail in the workflows dashboard). |
 | 2 | `agent` | Starts **one** subagent (role label `stickler`, tools limited to **read-only**). Gives it the Intake prompt file and the Intake JSON Schema. The agent must deposit structured requests from `requests_dir`. Stores the full agent result under the name **`intake`**. |
-| 3 | `if_failed` (+ `else`) | If that agent crashed or reported failure, **stop** with a short summary and empty transactions. **Else** log that intake succeeded (branching sugar with an `else` arm). |
+| 3 | `if_failed` (+ `else`) | If that agent crashed or reported failure, **`set` status** and **stop**. **Else** set status to intake success and log (branching sugar with an `else` arm). |
 | 4 | `bind` | From the successful agent result, pull out only the `requests` array and store it under the simpler name **`requests`**. |
 | 5 | `if_empty` (+ `else`) | If that array has zero entries, **stop**: no supply asks this cycle. **Else** log intake complete for company/cycle. |
 
@@ -252,7 +253,7 @@ The workflow’s `steps` array runs **in order**. Below, **#** is the step numbe
 | 10 | `phase` | Progress UI: **Audit** stage. |
 | 11 | `parallel` | For **each** line in `items`, start a **skeptic** subagent (read-only) with the Audit prompt and schema. Each child must argue keep-or-drop across several facets (necessity, quantity, duplicates, policy, budget) and attach evidence. Results: **`audit_results`**. |
 | 12 | `zip_filter` | Walk `items` and `audit_results` together by position (index 0 with index 0, and so on). **Keep** the original line item in **`survivors`** only when that audit result succeeded, marked the line `real: true`, and supplied a non-empty `evidence` list. For rejects, push the line’s **id** into **`dropped_items`**. |
-| 13 | `if` / `else_if` / `else` | **Multi-way branch:** if `survivors` is **empty**, stop and report dropped ids; **else if** `dropped_items` is **nonempty**, log that some items were dropped; **else** log that all items passed. (Shows the full structured `if` op.) |
+| 13 | `if` / `else_if` / `else` | **Multi-way branch:** if `survivors` is **empty**, `set` status and stop with dropped ids; **else if** `dropped_items` is **nonempty**, `set` status and log partial; **else** `set` status and log all passed. |
 
 ### Station: Procurement
 
@@ -270,7 +271,7 @@ The workflow’s `steps` array runs **in order**. Below, **#** is the step numbe
 | 18 | `phase` | Progress UI: **Purchasing** stage. |
 | 19 | `parallel` | For **each** vendor pick, start a **general-purpose** subagent with **execute** capability. It should buy when tools allow, or record an honest **simulated** purchase. Results: **`purchase_results`**. |
 | 20 | `collect` | Concatenate each child’s `transactions` array into **`transactions`** (the cycle ledger). |
-| 21 | `if` / `else` | **Final branch:** if `transactions` is **empty**, complete with a “no recorded transactions” summary (still attaching requests, survivors, drops, picks); **else** complete with the full success report including transactions. |
+| 21 | `if` / `else` + `set` | **Final branch:** `set` `cycle_status` and build **`final_report`** via `set` (with `$ref`s), then `complete` from that binding—empty transactions vs full success. |
 
 ---
 
@@ -335,6 +336,10 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
   },
   "steps": [
     {
+      "op": "set",
+      "as": "cycle_status"
+    },
+    {
       "op": "phase",
       "title": "Intake"
     },
@@ -354,14 +359,27 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       "path": "intake",
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_failed"
+        },
+        {
           "op": "complete",
           "value": {
             "summary": "intake failed",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "transactions": []
           }
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_ok"
+        },
         {
           "op": "log",
           "message": "Intake agent succeeded for {{args.company_name}}"
@@ -469,9 +487,17 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       },
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_none_survived"
+        },
+        {
           "op": "complete",
           "value": {
             "summary": "No items survived audit.",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "dropped": {
               "$ref": "dropped_items"
             },
@@ -487,6 +513,11 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
           },
           "then": [
             {
+              "op": "set",
+              "as": "cycle_status",
+              "value": "audit_partial"
+            },
+            {
               "op": "log",
               "message": "Audit complete for {{args.company_name}} (some items dropped)"
             }
@@ -494,6 +525,11 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_all_passed"
+        },
         {
           "op": "log",
           "message": "Audit complete for {{args.company_name}} (all items passed)"
@@ -578,9 +614,18 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
       },
       "then": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "no_transactions"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle finished with no recorded transactions",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "requests": {
               "$ref": "requests"
             },
@@ -595,13 +640,28 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
             },
             "transactions": []
           }
+        },
+        {
+          "op": "complete",
+          "value": {
+            "$ref": "final_report"
+          }
         }
       ],
       "else": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "complete"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle complete",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "requests": {
               "$ref": "requests"
             },
@@ -617,6 +677,12 @@ This is the pipeline itself: name, human description, dashboard phases, input ar
             "transactions": {
               "$ref": "transactions"
             }
+          }
+        },
+        {
+          "op": "complete",
+          "value": {
+            "$ref": "final_report"
           }
         }
       ]

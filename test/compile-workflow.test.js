@@ -97,6 +97,14 @@ nodeTest.test("compiles office-shopping.workflow.json", function testShopping() 
   nodeAssert.match(result.rhai, /\/\/if empty transactions/);
   nodeAssert.match(result.rhai, /no recorded transactions/);
 
+  //set: unit declare, reassignment, final_report via $ref complete
+  nodeAssert.match(result.rhai, /\/\/set cycle_status/);
+  nodeAssert.match(result.rhai, /let cycle_status = \(\);/);
+  nodeAssert.match(result.rhai, /cycle_status = "intake_ok"/);
+  nodeAssert.match(result.rhai, /let final_report = \(\);/);
+  nodeAssert.match(result.rhai, /final_report = #\{/);
+  nodeAssert.match(result.rhai, /complete\(final_report\);/);
+
 //end testShopping
 });
 
@@ -558,4 +566,144 @@ nodeTest.test("rejects empty if.then", function testEmptyThen() {
   }, /if\.then must be a non-empty step array/);
 
 //end testEmptyThen
+});
+
+//set: unit default, reassignment, $ref value, arg collision
+nodeTest.test("emits set with unit default and reassignment", function testSetBasic() {
+
+  //variables
+  let workflow = null; //doc
+  let result = null; //compile
+
+  //sequential set
+  workflow = {
+    name: "set-demo", //name
+    description: "set op unit test", //desc
+    args: {
+      label: { default: "run" }, //arg
+    },
+    steps: [
+      {
+        op: "set", //declare unit
+        as: "status", //binding
+      },
+      {
+        op: "set", //assign
+        as: "status", //same
+        value: "ready", //string
+      },
+      {
+        op: "set", //object with ref
+        as: "payload", //binding
+        value: {
+          status: { $ref: "status" }, //ref
+          label: "fixed", //literal
+        },
+      },
+      {
+        op: "complete", //end
+        value: { $ref: "payload" }, //ref complete
+      },
+    ],
+  };
+
+  //compile
+  result = compileMod.compileWorkflow(workflow, {
+    base: examplesBase, //base
+  });
+
+  //emission
+  nodeAssert.match(result.rhai, /let status = \(\);/);
+  nodeAssert.match(result.rhai, /status = "ready";/);
+  nodeAssert.match(result.rhai, /let payload = #\{/);
+  nodeAssert.match(result.rhai, /status: status,/);
+  nodeAssert.match(result.rhai, /complete\(payload\);/);
+
+//end testSetBasic
+});
+
+//set inside if arms is hoisted
+nodeTest.test("hoists set bindings used inside if arms", function testSetHoist() {
+
+  //variables
+  let workflow = null; //doc
+  let result = null; //compile
+
+  //branch sets outcome
+  workflow = baseBranchWorkflow([
+    {
+      op: "if", //if
+      when: {
+        kind: "failed", //kind
+        path: "intake", //path
+      },
+      then: [
+        {
+          op: "set", //set
+          as: "outcome", //binding
+          value: "bad", //value
+        },
+      ],
+      else: [
+        {
+          op: "set", //set
+          as: "outcome", //binding
+          value: "good", //value
+        },
+      ],
+    },
+    {
+      op: "complete", //use after if
+      value: { outcome: { $ref: "outcome" } }, //ref
+    },
+  ]);
+
+  //compile
+  result = compileMod.compileWorkflow(workflow, {
+    base: examplesBase, //base
+  });
+
+  //hoist then assign in arms
+  nodeAssert.match(result.rhai, /let outcome = \(\);/);
+  nodeAssert.match(result.rhai, /outcome = "bad";/);
+  nodeAssert.match(result.rhai, /outcome = "good";/);
+  nodeAssert.match(result.rhai, /outcome: outcome,/);
+
+//end testSetHoist
+});
+
+//set cannot collide with args
+nodeTest.test("rejects set.as that collides with args", function testSetArgClash() {
+
+  //variables
+  let workflow = null; //doc
+
+  //clash with arg
+  workflow = {
+    name: "set-clash", //name
+    description: "should fail", //desc
+    args: {
+      target: { required: true }, //arg
+    },
+    steps: [
+      {
+        op: "set", //set
+        as: "target", //same as arg
+        value: "nope", //value
+      },
+    ],
+  };
+
+  //expect throw
+  nodeAssert.throws(function runCompile() {
+
+    //compile
+    compileMod.compileWorkflow(workflow, {
+      base: examplesBase, //base
+    });
+
+  //end run
+  }, /collides with a workflow arg/);
+
+//end testSetArgClash
 });

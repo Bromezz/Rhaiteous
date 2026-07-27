@@ -68,7 +68,7 @@ npx rhaiteous --help
 Pin a version in CI/scripts when you want reproducible compiles:
 
 ```bash
-npx rhaiteous@0.2.1 ./rhaiteous/workflows/my.workflow.json
+npx rhaiteous@0.3.0 ./rhaiteous/workflows/my.workflow.json
 ```
 
 ### Global CLI (optional)
@@ -326,6 +326,10 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
   },
   "steps": [
     {
+      "op": "set",
+      "as": "cycle_status"
+    },
+    {
       "op": "phase",
       "title": "Intake"
     },
@@ -345,14 +349,27 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       "path": "intake",
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_failed"
+        },
+        {
           "op": "complete",
           "value": {
             "summary": "intake failed",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "transactions": []
           }
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_ok"
+        },
         {
           "op": "log",
           "message": "Intake agent succeeded for {{args.company_name}}"
@@ -460,9 +477,17 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       },
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_none_survived"
+        },
+        {
           "op": "complete",
           "value": {
             "summary": "No items survived audit.",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "dropped": {
               "$ref": "dropped_items"
             },
@@ -478,6 +503,11 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
           },
           "then": [
             {
+              "op": "set",
+              "as": "cycle_status",
+              "value": "audit_partial"
+            },
+            {
               "op": "log",
               "message": "Audit complete for {{args.company_name}} (some items dropped)"
             }
@@ -485,6 +515,11 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_all_passed"
+        },
         {
           "op": "log",
           "message": "Audit complete for {{args.company_name}} (all items passed)"
@@ -569,9 +604,18 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
       },
       "then": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "no_transactions"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle finished with no recorded transactions",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "requests": {
               "$ref": "requests"
             },
@@ -586,13 +630,28 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
             },
             "transactions": []
           }
+        },
+        {
+          "op": "complete",
+          "value": {
+            "$ref": "final_report"
+          }
         }
       ],
       "else": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "complete"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle complete",
+            "status": {
+              "$ref": "cycle_status"
+            },
             "requests": {
               "$ref": "requests"
             },
@@ -608,6 +667,12 @@ npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
             "transactions": {
               "$ref": "transactions"
             }
+          }
+        },
+        {
+          "op": "complete",
+          "value": {
+            "$ref": "final_report"
           }
         }
       ]
@@ -815,6 +880,7 @@ Top-level document:
 | `collect` | Merge `output.<field>` arrays from parallel results |
 | `zip_filter` | Keep left items whose parallel verdict has `real: true` |
 | `bind` | `let x = agent.output.field` |
+| `set` | Assign a value (or unit `()`) to a binding; works in flow and branches |
 | `if` | Structured branch: `when` + `then` + optional `else_if` / `else` |
 | `if_empty` / `if_failed` | Conditional nested steps (optional `else`) |
 | `complete` | End run (supports `{ "$ref": "binding" }`) |

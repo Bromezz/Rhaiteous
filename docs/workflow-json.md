@@ -364,6 +364,45 @@ Emits: `let files = intake.output.files;`
 
 ---
 
+### `set`
+
+Assign a value to a binding (introduce or reassign). Works in sequential flow and inside `then` / `else_if` / `else`.
+
+```json
+{ "op": "set", "as": "cycle_status" }
+```
+
+```json
+{ "op": "set", "as": "cycle_status", "value": "complete" }
+```
+
+```json
+{
+  "op": "set",
+  "as": "final_report",
+  "value": {
+    "summary": "done",
+    "status": { "$ref": "cycle_status" },
+    "items": { "$ref": "survivors" }
+  }
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `as` | yes | Binding name (must not collide with a workflow **arg** name) |
+| `value` | no | JSON-compatible tree with optional `{ "$ref": "binding" }` nodes (same as `complete.value`). **Omitted → Rhai unit `()`** |
+
+**Emission:**
+
+- First introduction of `as`: `let as = <valueExpr>;` (or `let as = ();` when `value` omitted)
+- Later `set` to the same name: `as = <valueExpr>;`
+- If `set` appears inside any arm of `if` / `if_empty` / `if_failed`, the compiler **hoists** `let as = ();` before that branch construct so assignments in arms stay in outer scope
+
+Use `set` for author-defined locals; use `bind` to extract agent output fields.
+
+---
+
 ### `if`
 
 Structured multi-way branch with a **closed** set of condition kinds (no free-form Rhai expressions).
@@ -559,7 +598,7 @@ Steps introduce **known bindings** used by later steps and templates:
 | Introduced by | Binding |
 |---------------|---------|
 | `args` | Each arg name |
-| `agent` / `parallel` / `collect` / `zip_filter` / `bind` | `as` (and `dropped_as`) |
+| `agent` / `parallel` / `collect` / `zip_filter` / `bind` / `set` | `as` (and `dropped_as`) |
 | `schemas` | Not step bindings; schema names only for `output_schema` |
 
 Using an unknown `over` / `from` / `$ref` fails at compile time.

@@ -403,6 +403,9 @@ let cycle = if args == () || args.cycle == () { "twice-weekly" } else { args.cyc
 let requests_dir = if args == () { () } else { args.requests_dir };
 if requests_dir == () { pause("verification", "Pass args.requests_dir."); }
 
+//set cycle_status
+let cycle_status = ();
+
 //phase Intake
 phase("Intake");
 
@@ -425,12 +428,19 @@ let intake = agent(p, #{
 
 //if_failed intake
 if intake == () || !intake.success {
+  //set cycle_status
+  cycle_status = "intake_failed";
+
   //complete run
   complete(#{
+    status: cycle_status,
     summary: "intake failed",
     transactions: [],
   });
 } else {
+  //set cycle_status
+  cycle_status = "intake_ok";
+
   //log progress
   let m = "";
   m += "Intake agent succeeded for ";
@@ -574,13 +584,20 @@ for v in audit_results {
 
 //if empty survivors
 if survivors.len() == 0 {
+  //set cycle_status
+  cycle_status = "audit_none_survived";
+
   //complete run
   complete(#{
     dropped: dropped_items,
+    status: cycle_status,
     summary: "No items survived audit.",
     transactions: [],
   });
 } else if dropped_items.len() > 0 {
+  //set cycle_status
+  cycle_status = "audit_partial";
+
   //log progress
   let m = "";
   m += "Audit complete for ";
@@ -588,6 +605,9 @@ if survivors.len() == 0 {
   m += " (some items dropped)";
   log(m);
 } else {
+  //set cycle_status
+  cycle_status = "audit_all_passed";
+
   //log progress
   let m = "";
   m += "Audit complete for ";
@@ -696,26 +716,42 @@ for r in purchase_results {
   }
 }
 
+//hoist binding for branch assignment
+let final_report = ();
 //if empty transactions
 if transactions.len() == 0 {
-  //complete run
-  complete(#{
+  //set cycle_status
+  cycle_status = "no_transactions";
+
+  //set final_report
+  final_report = #{
     dropped: dropped_items,
     items_audited: survivors,
     requests: requests,
+    status: cycle_status,
     summary: "office shopping cycle finished with no recorded transactions",
     transactions: [],
     vendor_picks: vendor_picks,
-  });
-} else {
+  };
+
   //complete run
-  complete(#{
+  complete(final_report);
+} else {
+  //set cycle_status
+  cycle_status = "complete";
+
+  //set final_report
+  final_report = #{
     dropped: dropped_items,
     items_audited: survivors,
     requests: requests,
+    status: cycle_status,
     summary: "office shopping cycle complete",
     transactions: transactions,
     vendor_picks: vendor_picks,
-  });
+  };
+
+  //complete run
+  complete(final_report);
 }
 

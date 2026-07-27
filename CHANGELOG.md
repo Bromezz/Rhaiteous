@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-27
+
+### Added
+
+- Step op **`set`**: assign JSON / `{ "$ref" }` values to bindings; omit `value` for unit `()`
+- Hoist `let name = ()` when `set` targets appear inside branch arms (visible after `if` / `if_empty` / `if_failed`)
+- office-shopping uses `set` for `cycle_status` / `final_report` across branches
+
 ## [0.2.1] — 2026-07-27
 
 ### Changed

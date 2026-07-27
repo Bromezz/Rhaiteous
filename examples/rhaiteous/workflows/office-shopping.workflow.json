@@ -21,6 +21,10 @@
     "purchase_one": "shopping-purchase-one.schema.json"
   },
   "steps": [
+    {
+      "op": "set",
+      "as": "cycle_status"
+    },
     { "op": "phase", "title": "Intake" },
     {
       "op": "agent",
@@ -36,11 +40,25 @@
       "path": "intake",
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_failed"
+        },
+        {
           "op": "complete",
-          "value": { "summary": "intake failed", "transactions": [] }
+          "value": {
+            "summary": "intake failed",
+            "status": { "$ref": "cycle_status" },
+            "transactions": []
+          }
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "intake_ok"
+        },
         {
           "op": "log",
           "message": "Intake agent succeeded for {{args.company_name}}"
@@ -131,9 +149,15 @@
       "when": { "kind": "empty", "path": "survivors" },
       "then": [
         {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_none_survived"
+        },
+        {
           "op": "complete",
           "value": {
             "summary": "No items survived audit.",
+            "status": { "$ref": "cycle_status" },
             "dropped": { "$ref": "dropped_items" },
             "transactions": []
           }
@@ -144,6 +168,11 @@
           "when": { "kind": "nonempty", "path": "dropped_items" },
           "then": [
             {
+              "op": "set",
+              "as": "cycle_status",
+              "value": "audit_partial"
+            },
+            {
               "op": "log",
               "message": "Audit complete for {{args.company_name}} (some items dropped)"
             }
@@ -151,6 +180,11 @@
         }
       ],
       "else": [
+        {
+          "op": "set",
+          "as": "cycle_status",
+          "value": "audit_all_passed"
+        },
         {
           "op": "log",
           "message": "Audit complete for {{args.company_name}} (all items passed)"
@@ -222,28 +256,50 @@
       "when": { "kind": "empty", "path": "transactions" },
       "then": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "no_transactions"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle finished with no recorded transactions",
+            "status": { "$ref": "cycle_status" },
             "requests": { "$ref": "requests" },
             "items_audited": { "$ref": "survivors" },
             "dropped": { "$ref": "dropped_items" },
             "vendor_picks": { "$ref": "vendor_picks" },
             "transactions": []
           }
+        },
+        {
+          "op": "complete",
+          "value": { "$ref": "final_report" }
         }
       ],
       "else": [
         {
-          "op": "complete",
+          "op": "set",
+          "as": "cycle_status",
+          "value": "complete"
+        },
+        {
+          "op": "set",
+          "as": "final_report",
           "value": {
             "summary": "office shopping cycle complete",
+            "status": { "$ref": "cycle_status" },
             "requests": { "$ref": "requests" },
             "items_audited": { "$ref": "survivors" },
             "dropped": { "$ref": "dropped_items" },
             "vendor_picks": { "$ref": "vendor_picks" },
             "transactions": { "$ref": "transactions" }
           }
+        },
+        {
+          "op": "complete",
+          "value": { "$ref": "final_report" }
         }
       ]
     }

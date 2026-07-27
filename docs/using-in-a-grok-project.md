@@ -77,7 +77,7 @@ npm run workflows:compile
 
 ```bash
 npx rhaiteous --help
-npx rhaiteous@0.2.1 ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
+npx rhaiteous@0.3.0 ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
 ```
 
 ### Global install (optional)
