@@ -54,6 +54,20 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discover
 - Example: `office-shopping`
 - Becomes both `meta.name` and the default output file stem: `<name>.rhai`
 
+### Identifiers and Rhai keywords
+
+Args, schema binding names, `as` / `path` / loop locals, `$ref` targets, and similar fields become **Rhai identifiers**. They must not be Rhai **active or reserved keywords** (`switch`, `for`, `match`, `let`, `type_of`, …).
+
+If any such name is reserved, **compile fails** after collecting **all** violations. The error lists each keyword, its origin label (e.g. `agent.as`, `args field`), and points at the keyword list shipped with the package:
+
+```text
+src/data/rhai-keywords.txt
+```
+
+(Sources: [Rhai keywords](https://rhai.rs/book/language/keywords.html), [appendix list](https://rhai.rs/book/appendix/keywords.html).)
+
+Prompt and log **string** contents may contain keyword words; those are string literals, not identifiers.
+
 ### `phases[]`
 
 | Field | Type | Required |

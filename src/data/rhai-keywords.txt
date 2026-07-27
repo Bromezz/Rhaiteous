@@ -1,0 +1,72 @@
+# Rhai keywords that must not be used as identifiers (bindings, args, loop locals, …).
+# One keyword per line. Lines starting with # are comments. Blank lines ignored.
+# Case-sensitive (Rhai identifiers are case-sensitive).
+#
+# Sources (Rhai book):
+#   https://rhai.rs/book/language/keywords.html
+#   https://rhai.rs/book/appendix/keywords.html
+#
+# Active keywords
+true
+false
+let
+const
+if
+else
+switch
+do
+while
+until
+loop
+for
+in
+continue
+break
+return
+throw
+try
+catch
+import
+export
+as
+global
+private
+fn
+Fn
+call
+curry
+is_shared
+is_def_fn
+is_def_var
+this
+type_of
+print
+debug
+eval
+# Reserved keywords
+var
+static
+shared
+goto
+match
+case
+public
+protected
+new
+use
+with
+is
+module
+package
+super
+thread
+spawn
+go
+await
+async
+sync
+yield
+default
+void
+null
+nil

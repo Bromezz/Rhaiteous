@@ -67,8 +67,12 @@ To keep generated IR under git when `.grok` is otherwise ignored, see [using-in-
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Compile / I/O failure |
+| `1` | Compile / I/O failure (including Rhai reserved-keyword violations) |
 | `2` | Usage error (missing file, bad flags, missing input) |
+
+### Rhai reserved keywords
+
+Author identifiers (args, `as`, paths, schema bindings, …) must not be Rhai keywords. The compiler loads `src/data/rhai-keywords.txt` from the package, reports **every** violation with origin labels, and exits `1` without writing output. See [workflow-json.md](./workflow-json.md#identifiers-and-rhai-keywords).
 
 ### Stdout vs stderr
 

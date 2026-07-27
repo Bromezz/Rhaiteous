@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-07-27
+
+### Added
+
+- Compile-time **Rhai reserved-keyword guard**: rejects author identifiers that collide with Rhai keywords
+- Keyword list shipped at `src/data/rhai-keywords.txt` (active + reserved from the Rhai book)
+- Detailed multi-violation report with origin labels; post-emit scan safety net
+- Docs for the keyword check; tests in `test/rhai-keywords.test.js`
+
 ## [0.3.0] — 2026-07-27
 
 ### Added

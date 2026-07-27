@@ -50,6 +50,8 @@ This is the same split many systems use (YAML/JSON → engine IR), without waiti
 | `template.js` | `{{refs}}` → Rhai string concatenation statements |
 | `compile-workflow.js` | Dialect validation, schema load, step emit, file I/O |
 | `cli.js` | `parseArgs`, exit codes, stdout/stderr policy |
+| `rhai-keywords.js` | Load/check shipped Rhai keyword list; format multi-violation reports |
+| `data/rhai-keywords.txt` | Active + reserved Rhai keywords (identifier ban-list) |
 
 ### Schema pipeline
 
@@ -77,6 +79,8 @@ Prefer:
 **Branching:** structured `if` / `else_if` / `else` with a **closed** set of `when.kind` values (`empty`, `nonempty`, `failed`, `succeeded`). `if_empty` / `if_failed` remain as sugar (optional `else`). No free-form Rhai predicates.
 
 **Assignment:** `set` introduces or reassigns a binding from a JSON/`$ref` value tree (`value` optional → unit `()`). Bindings assigned only inside branch arms are hoisted with `let name = ()` before the branch so they remain visible afterward.
+
+**Rhai keyword guard:** Author-controlled identifiers are checked against a shipped list (`src/data/rhai-keywords.txt`, Node stdlib only). Violations are collected (not fail-fast) and reported with origin labels; a post-emit scan is a safety net. Intentional language tokens in IR (`let`, `if`, `for`, …) are allowlisted for that scan.
 
 If an escape hatch is added later, document it as IR leakage and keep it optional.
 

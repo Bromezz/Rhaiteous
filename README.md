@@ -68,7 +68,7 @@ npx rhaiteous --help
 Pin a version in CI/scripts when you want reproducible compiles:
 
 ```bash
-npx rhaiteous@0.3.0 ./rhaiteous/workflows/my.workflow.json
+npx rhaiteous@0.3.1 ./rhaiteous/workflows/my.workflow.json
 ```
 
 ### Global CLI (optional)
@@ -926,6 +926,7 @@ docs/                       Extended documentation
 
 - **JSON = authoring surface; Rhai = IR.** Recompile after editing JSON/schemas; do not hand-edit generated `.rhai` unless you are debugging the emitter.
 - **Fail closed.** Unknown step `op` values throw at compile time.
+- **Rhai keyword guard.** Author identifiers cannot be Rhai reserved words; compile lists every violation (see `src/data/rhai-keywords.txt`).
 - **No npm runtime deps.** Easier to audit and embed.
 - **Standalone verifiability.** CLI and library share `compile-workflow.js`.
 - **Not affiliated with xAI.** Grok Build is a product of xAI; Rhaiteous is an independent helper for its workflow format.

@@ -1,6 +1,6 @@
 {
   "name": "rhaiteous",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "description": "Rhaiteous — compile JSON + JSON Schema workflow definitions into Grok Build Rhai scripts",
   "license": "MIT",
@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "rhaiteous": "node ./bin/rhaiteous.js",
-    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js",
+    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js ./test/rhai-keywords.test.js",
     "example:compile": "node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai"
   },
   "keywords": [
