@@ -68,7 +68,7 @@ npx rhaiteous --help
 Pin a version in CI/scripts when you want reproducible compiles:
 
 ```bash
-npx rhaiteous@0.1.1 ./rhaiteous/workflows/my.workflow.json
+npx rhaiteous@0.1.2 ./rhaiteous/workflows/my.workflow.json
 ```
 
 ### Global CLI (optional)
