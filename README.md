@@ -1,5 +1,8 @@
 # Rhaiteous
 
+[![npm](https://img.shields.io/npm/v/rhaiteous.svg?logoColor=CB3837&style=plastic&logo=npm&labelColor=silver&color=3269a0)](https://www.npmjs.com/package/rhaiteous)
+[![license](https://img.shields.io/npm/l/rhaiteous.svg?style=plastic&labelColor=silver)](./LICENSE)
+
 **JSON in → Rhai out** for [Grok Build](https://x.ai/) workflows.  
 *A righteous way to author Rhai.*
 
