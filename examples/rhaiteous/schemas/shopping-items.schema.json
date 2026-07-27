@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/shopping-items.schema.json",
+  "$comment": "Inventory station: concrete SKUs/items and quantities derived from deposited requests.",
+  "title": "ShoppingItemsResult",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "$comment": "Normalized line items for this twice-weekly cycle. Cap keeps audit fan-out bounded.",
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "$comment": "One buyable line. id must stay stable through Audit, Procurement, and Purchasing.",
+        "type": "object",
+        "required": ["id", "name", "quantity", "unit", "request_ids", "evidence"],
+        "properties": {
+          "id": {
+            "$comment": "Stable line id; office-shopping prompt uses {requestId}-item-N (e.g. req-001-item-1).",
+            "type": "string"
+          },
+          "name": {
+            "$comment": "Specific product description (not a vague category).",
+            "type": "string"
+          },
+          "quantity": {
+            "$comment": "How many units to buy this cycle.",
+            "type": "number"
+          },
+          "unit": {
+            "$comment": "Unit of measure: each, box, ream, pack, case, etc.",
+            "type": "string"
+          },
+          "category": {
+            "$comment": "Optional bucket: paper, kitchen, IT, cleaning, other.",
+            "type": "string"
+          },
+          "request_ids": {
+            "$comment": "Intake request ids that drove this line (merge duplicates here).",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "evidence": {
+            "$comment": "Citations back to deposited requests or policy docs.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source", "quote"],
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "description": "Request id, path, or URL"
+                },
+                "quote": {
+                  "type": "string",
+                  "description": "Supporting excerpt"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

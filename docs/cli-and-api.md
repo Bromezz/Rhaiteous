@@ -2,16 +2,30 @@
 
 ## CLI: `rhaiteous`
 
-Entry points:
+**Recommended (published package):**
 
-- `bin/rhaiteous.js` (npm bin: `rhaiteous`)
-- `node ./bin/rhaiteous.js ...`
-- `npm run rhaiteous -- ...`
+```bash
+npm install --save-dev rhaiteous   # once, in your Grok project
+npx rhaiteous <workflow.json> [options]
+```
+
+Also:
+
+| Entry | When |
+|-------|------|
+| `npx rhaiteous …` | Project has `rhaiteous` installed, or one-shot from the registry |
+| `rhaiteous …` | Global install (`npm i -g rhaiteous`) or npm script `bin` path |
+| `node ./bin/rhaiteous.js …` | Developing this repository from a clone |
+| `npm run rhaiteous -- …` | This package’s own `package.json` script |
+
+Registry: [https://www.npmjs.com/package/rhaiteous](https://www.npmjs.com/package/rhaiteous)
 
 ### Synopsis
 
 ```text
 rhaiteous <workflow.json> [options]
+# or:
+npx rhaiteous <workflow.json> [options]
 ```
 
 ### Options
@@ -65,16 +79,16 @@ To keep generated IR under git when `.grok` is otherwise ignored, see [using-in-
 
 ```bash
 # Grok project root: writes ./.grok/workflows/<name>.rhai
-rhaiteous ./rhaiteous/workflows/client-issues.workflow.json
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
 
 # explicit out and asset base
-rhaiteous ./rhaiteous/workflows/client-issues.workflow.json -b ./rhaiteous -o ./.grok/workflows/client-issues.rhai
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json -b ./rhaiteous -o ./.grok/workflows/office-shopping.rhai
 
 # CI compile check
-rhaiteous ./rhaiteous/workflows/client-issues.workflow.json --dry-run
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
 
-# package demos in this repo
-rhaiteous ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous --stdout
+# package demos in this repo (from a clone)
+npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous --stdout
 ```
 
 ---
@@ -89,8 +103,8 @@ Also: `./json-to-rhai` → value emitter only
 
 ```js
 import compileMod from "rhaiteous";
-// or from a clone:
-import compileMod from "./src/compile-workflow.js";
+// developing this repo from a clone:
+// import compileMod from "./src/compile-workflow.js";
 ```
 
 Default export is a **single object** (structured surface; no cherry-picked named exports required by callers).
@@ -168,10 +182,10 @@ Object keys are sorted for **deterministic** output.
 ### Example: programmatic compile
 
 ```js
-import compileMod from "./src/compile-workflow.js";
+import compileMod from "rhaiteous";
 import nodePath from "node:path";
 
-const workflowPath = nodePath.resolve("rhaiteous/workflows/minimal-summary.workflow.json");
+const workflowPath = nodePath.resolve("rhaiteous/workflows/office-shopping.workflow.json");
 const result = compileMod.compileWorkflowFile(workflowPath, {
   base: nodePath.resolve("rhaiteous"),
   // omit outPath → ./.grok/workflows/<name>.rhai under process.cwd()

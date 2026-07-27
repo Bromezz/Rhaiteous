@@ -1,6 +1,18 @@
 # Using Rhaiteous in a Grok Build project
 
-Step-by-step: install the compiler, lay out authoring files under version control, compile into Grok’s project workflow directory, and keep the generated `.rhai` trackable in git.
+Step-by-step: install the compiler from **npm**, lay out authoring files under version control, compile into Grok’s project workflow directory, and keep the generated `.rhai` trackable in git.
+
+## Recommended usage
+
+| Audience | How to run Rhaiteous |
+|----------|----------------------|
+| **Grok project authors (default)** | `npm install --save-dev rhaiteous` then `npx rhaiteous …` |
+| One-off / no package.json | `npx rhaiteous …` (downloads/runs the published CLI) |
+| Contributors to Rhaiteous itself | Clone this repo; `node ./bin/rhaiteous.js` or `npm link` |
+
+You do **not** need to clone or vendor the Rhaiteous source tree just to compile workflows. The published package has **zero runtime dependencies**.
+
+Package: [https://www.npmjs.com/package/rhaiteous](https://www.npmjs.com/package/rhaiteous)
 
 ## Mental model
 
@@ -29,41 +41,61 @@ relative to the **current working directory** when you compile (normally your Gr
 
 ## Prerequisites
 
-1. **Node.js 18+** (`node -v`).
+1. **Node.js 18+** (`node -v`) with **npm** (includes `npx`).
 2. A Grok Build project (repo / workspace root).
-3. Access to [Rhaiteous](https://github.com/Bromezz/Rhaiteous) (clone once).
-
-No `npm install` is required for the compiler (zero runtime dependencies).
 
 ---
 
-## 1. Install the CLI
+## 1. Install the CLI (recommended: npm)
 
-### Option A — `npm link` (PATH)
+From your **Grok project root**:
+
+### Project dependency (preferred)
 
 ```bash
-git clone https://github.com/Bromezz/Rhaiteous.git
-cd Rhaiteous
-npm test
-npm link
+npm install --save-dev rhaiteous
+npx rhaiteous --help
+```
+
+Using a **devDependency** keeps the compiler version pinned in `package.json` for teammates and CI, without putting it on production dependency lists.
+
+Optional script:
+
+```json
+{
+  "scripts": {
+    "workflows:compile": "rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json"
+  }
+}
+```
+
+```bash
+npm run workflows:compile
+```
+
+### One-shot with `npx` (no package.json entry)
+
+```bash
+npx rhaiteous --help
+npx rhaiteous@0.1.1 ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
+```
+
+### Global install (optional)
+
+```bash
+npm install -g rhaiteous
 rhaiteous --help
 ```
 
-### Option B — call Node on the clone
+### Alternatives (only if you need them)
 
-```bash
-git clone https://github.com/Bromezz/Rhaiteous.git ~/src/Rhaiteous
-node ~/src/Rhaiteous/bin/rhaiteous.js --help
-```
+| Approach | When |
+|----------|------|
+| Clone + `npm link` | Hacking on the compiler itself |
+| `node path/to/Rhaiteous/bin/rhaiteous.js` | Offline / unreleased commits |
+| Git submodule under `tools/rhaiteous` | Pin to a git SHA instead of npm |
 
-### Option C — vendor inside the Grok project
-
-```bash
-cd /path/to/your-grok-project
-git clone https://github.com/Bromezz/Rhaiteous.git tools/rhaiteous
-# or: git submodule add https://github.com/Bromezz/Rhaiteous.git tools/rhaiteous
-node ./tools/rhaiteous/bin/rhaiteous.js --help
-```
+For normal Grok project authoring, prefer **npm / `npx`**.
 
 ---
 
@@ -80,13 +112,13 @@ Recommended tree:
 
 ```text
 your-grok-project/
+  package.json           # lists rhaiteous as a devDependency
   rhaiteous/
-    workflows/     # *.workflow.json  (authoring — commit these)
-    schemas/       # *.schema.json
-    prompts/       # prompt source files
+    workflows/           # *.workflow.json  (authoring — commit these)
+    schemas/             # *.schema.json
+    prompts/             # prompt source files
   .grok/
-    workflows/     # *.rhai           (generated IR — Grok discovery)
-  tools/rhaiteous/ # optional vendored compiler
+    workflows/           # *.rhai           (generated IR — Grok discovery)
 ```
 
 | Path | Role |
@@ -102,35 +134,26 @@ Asset base defaults to `./rhaiteous` (`-b` / `--base` to override). The workflow
 
 ## 3. Author schema, prompt, and workflow
 
-**Schema** — `rhaiteous/schemas/summary.schema.json` (use `$comment` freely).
+Copy or adapt the shipped **office-shopping** example (five stations: Intake → Inventory → Audit → Procurement → Purchasing). Full file text and step-by-step explanation: [office-shopping-example.md](./office-shopping-example.md).
 
-**Prompt** — `rhaiteous/prompts/summarize.txt` (may include `{{args…}}` templates).
-
-**Workflow** — `rhaiteous/workflows/minimal-summary.workflow.json`:
+Minimal shape of a step that uses a schema + prompt file:
 
 ```json
 {
-  "name": "minimal-summary",
-  "description": "One agent returns a structured summary",
-  "args": {
-    "target": { "required": true }
-  },
-  "schemas": {
-    "summary": "summary.schema.json"
-  },
-  "steps": [
-    {
-      "op": "agent",
-      "as": "result",
-      "output_schema": "summary",
-      "prompt": ["summarize.txt"]
-    },
-    { "op": "complete_from", "from": "result" }
-  ]
+  "op": "agent",
+  "as": "intake",
+  "output_schema": "requests",
+  "prompt": ["shopping-intake.txt"]
 }
 ```
 
-Dialect reference: [workflow-json.md](./workflow-json.md).
+| Asset | Example path under `{base}` |
+|-------|-----------------------------|
+| Workflow | `workflows/office-shopping.workflow.json` |
+| Schemas | `schemas/shopping-requests.schema.json`, … |
+| Prompts | `prompts/shopping-intake.txt`, … |
+
+Use `$comment` freely in schema files. Dialect reference: [workflow-json.md](./workflow-json.md).
 
 ---
 
@@ -139,25 +162,27 @@ Dialect reference: [workflow-json.md](./workflow-json.md).
 Always run the compiler from the **Grok project root** so defaults resolve correctly.
 
 ```bash
-# default out: ./.grok/workflows/minimal-summary.rhai
+# default out: ./.grok/workflows/office-shopping.rhai
 # default base: ./rhaiteous
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
 ```
 
 Equivalent explicit form:
 
 ```bash
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json \
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json \
   -b ./rhaiteous \
-  -o ./.grok/workflows/minimal-summary.rhai
+  -o ./.grok/workflows/office-shopping.rhai
 ```
 
 Other useful flags:
 
 ```bash
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json --dry-run
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json --stdout
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --stdout
 ```
+
+If you installed globally or use an npm script that invokes the local bin, bare `rhaiteous …` works the same way.
 
 | Flag | Default |
 |------|---------|
@@ -168,11 +193,11 @@ Parent directories (including `.grok/workflows/`) are created as needed.
 
 **Do not hand-edit** the generated `.rhai` for day-to-day work. Change JSON / schemas / prompts and recompile.
 
-Optional user-global install (not the default):
+Optional user-global IR location (not the default):
 
 ```bash
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json \
-  -o ~/.grok/workflows/minimal-summary.rhai
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json \
+  -o ~/.grok/workflows/office-shopping.rhai
 ```
 
 ---
@@ -184,7 +209,7 @@ rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json \
 3. Launch:
 
 ```text
-/workflow minimal-summary {"target":"quarterly planning notes"}
+/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
 ```
 
 Use `/workflows` for the live run dashboard (runs, not the definition catalog).
@@ -222,7 +247,7 @@ Narrower variant (only `.rhai` files):
 
 ```bash
 # compile so the files exist
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
 
 # force-add if they were previously ignored
 git add -f .grok/workflows/*.rhai
@@ -244,32 +269,40 @@ If you **prefer not** to commit IR, keep `.grok/` fully ignored and recompile in
 ## 7. Day-to-day loop
 
 1. Edit under `rhaiteous/` (workflow JSON, schemas, prompts).
-2. Recompile from project root (`rhaiteous ./rhaiteous/workflows/….json`).
+2. Recompile from project root: `npx rhaiteous ./rhaiteous/workflows/….json` (or `npm run workflows:compile`).
 3. Re-run `/workflow <name> {…}` in Grok.
 4. Commit sources (+ `.rhai` if you track IR).
 
-Example npm script in the **Grok project**:
+---
 
-```json
-{
-  "scripts": {
-    "workflows:compile": "rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json"
-  }
-}
+## 8. Optional: seed from the office-shopping example
+
+Browse assets on GitHub: [examples/rhaiteous](https://github.com/Bromezz/Rhaiteous/tree/main/examples/rhaiteous), or clone once to copy:
+
+```bash
+git clone --depth 1 https://github.com/Bromezz/Rhaiteous.git /tmp/Rhaiteous
+cp /tmp/Rhaiteous/examples/rhaiteous/workflows/*.workflow.json ./rhaiteous/workflows/
+cp /tmp/Rhaiteous/examples/rhaiteous/schemas/* ./rhaiteous/schemas/
+cp /tmp/Rhaiteous/examples/rhaiteous/prompts/* ./rhaiteous/prompts/
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
 ```
+
+When compiling **inside the Rhaiteous repo itself**, demos use `-b ./examples/rhaiteous` and often `-o ./examples/out/…`. In a real Grok project, omit `-o` so output lands in `.grok/workflows/`.
+
+Full walkthrough: [office-shopping-example.md](./office-shopping-example.md).
 
 ---
 
-## 8. Optional: seed from Rhaiteous examples
+## 9. Verify your install (smoke test)
+
+After `npm install --save-dev rhaiteous` (and with authoring files under `./rhaiteous/`):
 
 ```bash
-cp tools/rhaiteous/examples/rhaiteous/workflows/*.workflow.json ./rhaiteous/workflows/
-cp tools/rhaiteous/examples/rhaiteous/schemas/* ./rhaiteous/schemas/
-cp tools/rhaiteous/examples/rhaiteous/prompts/* ./rhaiteous/prompts/
-rhaiteous ./rhaiteous/workflows/minimal.workflow.json
+npx rhaiteous --help
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
 ```
 
-When compiling **inside the Rhaiteous repo itself**, examples use `-b ./examples/rhaiteous` and often `-o ./examples/out/…` so the package’s demo IR stays under `examples/out/`. In a real Grok project, omit `-o` so output lands in `.grok/workflows/`.
+Expect exit code `0` and a line like `ok: compiled … (dry-run)`.
 
 ---
 

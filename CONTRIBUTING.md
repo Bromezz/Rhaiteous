@@ -18,8 +18,7 @@ node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js
 5. Compile examples:
 
 ```bash
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json -b ./examples/rhaiteous -o ./examples/out/client-issues.rhai
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
 ```
 
 ## Project conventions

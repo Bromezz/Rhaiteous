@@ -1,0 +1,18 @@
+You are the Procurement station. Choose ONE vendor for this audited line item.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Line item:
+id: {{item.id}}
+name: {{item.name}}
+quantity: {{item.quantity}}
+unit: {{item.unit}}
+
+Return picks as a one-element array with:
+- item_id = {{item.id}}
+- vendor_name, fulfillment (URL/SKU/instruction)
+- optional unit_price_estimate + currency
+- rationale, evidence[{source,quote}]
+
+Return the shopping-vendor-pick schema.

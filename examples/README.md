@@ -1,49 +1,43 @@
 # Examples
 
-Sample **workflow JSON**, **JSON Schema**, and **prompt** files for **Rhaiteous** (`rhaiteous`).
+The package ships one full authoring tree: the **twice-weekly office shopping** pipeline.
 
 ## Layout
 
 ```text
 examples/
   rhaiteous/                    # asset base (-b ./examples/rhaiteous)
-    workflows/                  # *.workflow.json (authoring surface)
-    schemas/                    # real JSON Schema
-    prompts/                    # prompt source files
-  out/                          # sample generated Rhai (package demos only)
+    workflows/
+      office-shopping.workflow.json
+    schemas/                    # shopping-*.schema.json
+    prompts/                    # shopping-*.txt
+  out/
+    office-shopping.rhai        # sample generated IR
 ```
 
-In a real Grok Build project, the same shape lives at the repo root as `./rhaiteous/…`, and the compiler’s **default** output is **`.grok/workflows/<name>.rhai`** (Grok’s project discovery path). These package examples intentionally write sample IR under `examples/out/` so the Rhaiteous repo does not depend on a local `.grok/` tree for demos.
+In a real Grok Build project, the same shape lives at the repo root as `./rhaiteous/…`, and the compiler’s **default** output is **`.grok/workflows/<name>.rhai`**. These package demos write sample IR under `examples/out/` so this repo does not depend on a local `.grok/` tree.
 
-See [docs/using-in-a-grok-project.md](../docs/using-in-a-grok-project.md) for project integration and gitignore notes.
+**User guide (concepts, every step, all files):**  
+→ [docs/office-shopping-example.md](../docs/office-shopping-example.md)
 
-## minimal
+## office-shopping
 
-- Path: `rhaiteous/workflows/minimal.workflow.json`
-- Args: required `target`, optional `label` (default `"run"`)
-- Schema: `summary`
-- Prompt: `minimal-summarize.txt`
-- Ops: `phase`, `agent`, `if_failed`, `complete_from`
-
-```bash
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
-  -b ./examples/rhaiteous \
-  -o ./examples/out/minimal-summary.rhai
-```
-
-## client-issues
-
-- Path: `rhaiteous/workflows/client-issues.workflow.json`
-- Args: required `docs_dir`, optional `client_name`
-- Schemas: `inventory`, `candidates`, `verdict`
-- Prompts: `client-intake.txt`, `client-analyze.txt`, `client-verify.txt`
-- Ops: intake → parallel analyze → collect → parallel verify → zip_filter → complete
+- Path: `rhaiteous/workflows/office-shopping.workflow.json`
+- Stations: Intake → Inventory → Audit (`zip_filter`) → Procurement → Purchasing
+- Schemas: `shopping-requests`, `shopping-items`, `shopping-audit`, `shopping-vendor-pick`, `shopping-purchase-one`
+- Prompts: `shopping-intake.txt` … `shopping-purchasing.txt`
 - `evidence` is an array of `{ "source", "quote" }`
 
 ```bash
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json \
+npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
   -b ./examples/rhaiteous \
-  -o ./examples/out/client-issues.rhai
+  -o ./examples/out/office-shopping.rhai
+# from a clone without install:
+# node ./bin/rhaiteous.js … (same args)
+```
+
+```text
+/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
 ```
 
 ## Note on generated `out/`

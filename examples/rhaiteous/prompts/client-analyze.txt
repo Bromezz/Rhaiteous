@@ -1,7 +1,0 @@
-Extract issues of concern from this source file only.
-Client: {{args.client_name}}
-File: {{f}}
-Read the file with tools. Return up to 20 candidates.
-id format: {{i}}-<short-slug>. Empty list only after reading the file.
-For each candidate, evidence is an array of objects with source and quote
-(source may be a file path, URL, or other locator; quote is the supporting excerpt).

@@ -23,17 +23,17 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discover
 
 ```json
 {
-  "name": "my-workflow",
+  "name": "office-shopping",
   "description": "What this pipeline does",
   "phases": [
-    { "title": "Scan", "detail": "optional UI detail" }
+    { "title": "Intake", "detail": "optional UI detail" }
   ],
   "args": {
-    "target": { "required": true },
-    "label": { "default": "run" }
+    "requests_dir": { "required": true },
+    "company_name": { "default": "Acme Office" }
   },
   "schemas": {
-    "summary": "summary.schema.json"
+    "requests": "shopping-requests.schema.json"
   },
   "steps": []
 }
@@ -51,7 +51,7 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discover
 ### `name` rules
 
 - Pattern (approximately): lowercase start; letters, digits, hyphens; hyphenated multi-char names must end with letter or digit.
-- Examples: `minimal-summary`, `client-issues`
+- Example: `office-shopping`
 - Becomes both `meta.name` and the default output file stem: `<name>.rhai`
 
 ### `phases[]`
@@ -72,19 +72,19 @@ Each key is an **argument name** and becomes a **Rhai local** of the same name (
 **Required, no default** (pause if missing):
 
 ```json
-"docs_dir": { "required": true }
+"requests_dir": { "required": true }
 ```
 
 Shorthand (same meaning):
 
 ```json
-"docs_dir": true
+"requests_dir": true
 ```
 
 **Optional with default:**
 
 ```json
-"client_name": { "default": "client" }
+"company_name": { "default": "Acme Office" }
 ```
 
 **Optional without default** (local may be unit `()`):
@@ -96,13 +96,13 @@ Shorthand (same meaning):
 ### Generated Rhai (conceptual)
 
 ```rhai
-let docs_dir = if args == () { () } else { args.docs_dir };
-if docs_dir == () { pause("verification", "Pass args.docs_dir."); }
+let requests_dir = if args == () { () } else { args.requests_dir };
+if requests_dir == () { pause("verification", "Pass args.requests_dir."); }
 
-let client_name = if args == () || args.client_name == () { "client" } else { args.client_name };
+let company_name = if args == () || args.company_name == () { "Acme Office" } else { args.company_name };
 ```
 
-At runtime Grok still passes `args` into the script (e.g. `/workflow name {"docs_dir":"..."}`).
+At runtime Grok still passes `args` into the script (e.g. `/workflow office-shopping {"requests_dir":"..."}`).
 
 ---
 
@@ -110,9 +110,11 @@ At runtime Grok still passes `args` into the script (e.g. `/workflow name {"docs
 
 ```json
 "schemas": {
-  "inventory": "inventory.schema.json",
-  "candidates": "candidates.schema.json",
-  "verdict": "verdict.schema.json"
+  "requests": "shopping-requests.schema.json",
+  "items": "shopping-items.schema.json",
+  "audit": "shopping-audit.schema.json",
+  "vendor_pick": "shopping-vendor-pick.schema.json",
+  "purchase_one": "shopping-purchase-one.schema.json"
 }
 ```
 
@@ -129,7 +131,7 @@ At runtime Grok still passes `args` into the script (e.g. `/workflow name {"docs
 Use the **binding name**, not the path:
 
 ```json
-"output_schema": "candidates"
+"output_schema": "requests"
 ```
 
 ### Inline schema (discouraged)
@@ -156,11 +158,11 @@ followed by the file body. The resulting text may still contain `{{templates}}`,
 Example:
 
 ```json
-"prompt": ["client-analyze.txt"]
+"prompt": ["shopping-inventory.txt"]
 ```
 
 ```json
-"prompt": ["shared-preamble.txt", "client-analyze.txt"]
+"prompt": ["shared-preamble.txt", "shopping-inventory.txt"]
 ```
 
 Missing or unreadable files **fail the compile**.
@@ -181,11 +183,11 @@ Missing or unreadable files **fail the compile**.
 
 Unknown roots fail at **compile** time.
 
-Example prompt file body (`client-analyze.txt`):
+Example prompt file body (`shopping-inventory.txt`):
 
 ```text
-Client: {{args.client_name}}
-File: {{f}}
+Company: {{args.company_name}}
+Request: {{req}}
 Index: {{i}}
 ```
 
@@ -198,21 +200,21 @@ Every step is an object with string **`op`**. Unknown `op` values fail closed.
 ### `phase`
 
 ```json
-{ "op": "phase", "title": "Analysis" }
+{ "op": "phase", "title": "Inventory" }
 ```
 
 | Field | Required |
 |-------|----------|
 | `title` | yes |
 
-Emits: `phase("Analysis");`
+Emits: `phase("Inventory");`
 
 ---
 
 ### `log`
 
 ```json
-{ "op": "log", "message": "Intake complete for {{args.client_name}}" }
+{ "op": "log", "message": "Intake complete for {{args.company_name}}" }
 ```
 
 | Field | Required |
@@ -232,8 +234,8 @@ Single subagent invocation.
   "label": "intake",
   "agent_type": "stickler",
   "capability_mode": "read-only",
-  "output_schema": "inventory",
-  "prompt": ["client-intake.txt"]
+  "output_schema": "requests",
+  "prompt": ["shopping-intake.txt"]
 }
 ```
 
@@ -256,7 +258,7 @@ let intake = agent(p, #{
   label: "intake",
   agent_type: "stickler",
   capability_mode: "read-only",
-  output_schema: inventory_schema,
+  output_schema: requests_schema,
 });
 ```
 
@@ -269,15 +271,15 @@ Fan-out: one job per element of an array binding.
 ```json
 {
   "op": "parallel",
-  "as": "analysis_results",
-  "over": "files",
-  "item_as": "f",
+  "as": "inventory_results",
+  "over": "requests",
+  "item_as": "req",
   "index_as": "i",
-  "label_prefix": "analyze",
+  "label_prefix": "inventory",
   "agent_type": "analyst",
   "capability_mode": "read-only",
-  "output_schema": "candidates",
-  "prompt": ["client-analyze.txt"]
+  "output_schema": "items",
+  "prompt": ["shopping-inventory.txt"]
 }
 ```
 
@@ -459,7 +461,7 @@ If neither `extra` nor `pass_output` adds fields, emits `complete(<from>.output)
 {
   "op": "pause",
   "kind": "verification",
-  "message": "Provide args.docs_dir and resume."
+  "message": "Provide args.requests_dir and resume."
 }
 ```
 

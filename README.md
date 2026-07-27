@@ -43,42 +43,48 @@ Rhai remains what Grok executes. You maintain the authoring surface.
 - **Node.js 18+** (developed on 24 LTS)
 - No runtime npm dependencies (Node standard library only)
 
-## Install
+## Install (recommended: npm)
 
-### From a clone (this repo)
+Published package: **[rhaiteous](https://www.npmjs.com/package/rhaiteous)** on the public npm registry.
+
+### One-shot with `npx` (no install)
 
 ```bash
-git clone <your-fork-or-url>
-cd rhaiteous
-npm test
+npx rhaiteous --help
 ```
 
-Link the CLI locally:
+### Project dependency (recommended for Grok projects)
+
+From your **Grok project root**:
 
 ```bash
-npm link
-# then:
+npm install --save-dev rhaiteous
+npx rhaiteous --help
+```
+
+Pin a version in CI/scripts when you want reproducible compiles:
+
+```bash
+npx rhaiteous@0.1.1 ./rhaiteous/workflows/my.workflow.json
+```
+
+### Global CLI (optional)
+
+```bash
+npm install -g rhaiteous
 rhaiteous --help
-```
-
-Or run without linking:
-
-```bash
-node ./bin/rhaiteous.js --help
 ```
 
 ### As a library
 
 ```js
-import compileMod from "./src/compile-workflow.js";
-// after publish, e.g.: import compileMod from "rhaiteous";
+import compileMod from "rhaiteous";
 
 const result = compileMod.compileWorkflowFile(
-  "./examples/rhaiteous/workflows/minimal.workflow.json",
+  "./rhaiteous/workflows/office-shopping.workflow.json",
   {
-    base: "./examples/rhaiteous",
-    // omit outPath to write ./.grok/workflows/<name>.rhai
-    outPath: "./.grok/workflows/minimal-summary.rhai",
+    base: "./rhaiteous",
+    // omit outPath → writes ./.grok/workflows/<name>.rhai
     write: true,
   }
 );
@@ -86,33 +92,59 @@ const result = compileMod.compileWorkflowFile(
 console.log(result.outputPath);
 ```
 
-## Quick start
+### Developing this repo (contributors)
+
+Clone and run from source — not required for normal use:
 
 ```bash
-# package demos: sample IR under examples/out/ (not the Grok project path)
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
-  -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
+git clone https://github.com/Bromezz/Rhaiteous.git
+cd Rhaiteous
+npm test
+npm link          # optional: rhaiteous on PATH from this clone
+# or:
+node ./bin/rhaiteous.js --help
+```
 
-# in a Grok project (cwd = project root): default out is ./.grok/workflows/<name>.rhai
-rhaiteous ./rhaiteous/workflows/minimal-summary.workflow.json
+## Quick start
+
+In a **Grok project** (cwd = project root; assets under `./rhaiteous/`):
+
+```bash
+# install once
+npm install --save-dev rhaiteous
+
+# compile → ./.grok/workflows/<name>.rhai
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
+
+# compile only (CI check)
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --dry-run
 
 # print Rhai to stdout (status on stderr)
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
-  -b ./examples/rhaiteous --stdout
-
-# compile only, no write
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json \
-  -b ./examples/rhaiteous --dry-run
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json --stdout
 ```
 
-Then in Grok Build (project IR under `.grok/workflows/`, or user-global `~/.grok/workflows/`):
+Then in Grok Build:
 
 ```text
-/workflow minimal-summary {"target":"quarterly planning notes"}
+/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
 ```
 
-**Using this in a Grok project (layout, compile, git):**  
+**Full project guide (layout, gitignore, day-to-day loop):**  
 → **[docs/using-in-a-grok-project.md](./docs/using-in-a-grok-project.md)**
+
+**Complete example walkthrough (every file):**  
+→ **[docs/office-shopping-example.md](./docs/office-shopping-example.md)**
+
+### Package demos (this repository only)
+
+```bash
+# sample IR under examples/out/ (not the Grok project path)
+npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
+  -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
+# or from a clone without install:
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json \
+  -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
+```
 
 ## Asset base (`workflows/` + `schemas/` + `prompts/`)
 
@@ -134,9 +166,11 @@ Declare schemas by **name → path relative to `{base}/schemas`**:
 ```json
 {
   "schemas": {
-    "inventory": "inventory.schema.json",
-    "candidates": "candidates.schema.json",
-    "verdict": "verdict.schema.json"
+    "requests": "shopping-requests.schema.json",
+    "items": "shopping-items.schema.json",
+    "audit": "shopping-audit.schema.json",
+    "vendor_pick": "shopping-vendor-pick.schema.json",
+    "purchase_one": "shopping-purchase-one.schema.json"
   }
 }
 ```
@@ -147,8 +181,8 @@ Reference them on steps by **name** (not path):
 {
   "op": "agent",
   "as": "intake",
-  "output_schema": "inventory",
-  "prompt": ["client-intake.txt"]
+  "output_schema": "requests",
+  "prompt": ["shopping-intake.txt"]
 }
 ```
 
@@ -157,13 +191,13 @@ Reference them on steps by **name** (not path):
 Each step `prompt` is an **array of source file names** under `{base}/prompts/`. Files are loaded at compile time, concatenated (each prefaced with a banner), then `{{templates}}` are expanded into Rhai string builds. Missing files fail the compile.
 
 ```text
-===== [client-intake.txt] =====
+===== [shopping-intake.txt] =====
 …file body…
 ```
 
 You never hand-author the Rhai form of those schemas or prompt bodies.
 
-See `examples/rhaiteous/workflows/client-issues.workflow.json` for three schemas and prompt files used in one pipeline.
+See the [office-shopping example](./docs/office-shopping-example.md) for five schemas and five prompt files in one pipeline.
 
 ### Default Rhai output (project location)
 
@@ -188,6 +222,410 @@ If your project ignores `.grok/`, exempt the workflow IR so clones stay runnable
 ```
 
 Details: [docs/using-in-a-grok-project.md](./docs/using-in-a-grok-project.md#6-keep-compiled-workflows-in-git-gitignore-exception).
+
+## Complete example: twice-weekly office shopping
+
+This is a **full authoring set** for Rhaiteous: every file type you need (workflow JSON, schemas, prompts), plus how to compile and run it. Scenario: a small company builds a **twice-weekly office supply** list through five stations:
+
+| Station | What it does |
+|---------|----------------|
+| **Intake** | Collects requests from email, chat, forms, etc., and **deposits** them as structured records |
+| **Inventory** | Turns each request into specific items and quantities |
+| **Audit** | Challenges each line (necessity, quantity, duplicates, policy, budget) |
+| **Procurement** | Selects a vendor / fulfillment path per surviving item |
+| **Purchasing** | Performs (or simulates) purchases and records transactions |
+
+Canonical tree (also under [`examples/rhaiteous/`](./examples/rhaiteous/)):
+
+```text
+rhaiteous/
+  workflows/office-shopping.workflow.json
+  schemas/
+    shopping-requests.schema.json      # Intake
+    shopping-items.schema.json         # Inventory
+    shopping-audit.schema.json         # Audit
+    shopping-vendor-pick.schema.json   # Procurement (per item)
+    shopping-purchase-one.schema.json  # Purchasing (per pick)
+  prompts/
+    shopping-intake.txt
+    shopping-inventory.txt
+    shopping-audit.txt
+    shopping-procurement.txt
+    shopping-purchasing.txt
+.grok/workflows/office-shopping.rhai   # generated — do not hand-author
+```
+
+**Full text of every file** (workflow + all five schemas + all five prompts):  
+→ **[docs/office-shopping-example.md](./docs/office-shopping-example.md)**
+
+### Compile and run
+
+```bash
+# Grok project root → ./.grok/workflows/office-shopping.rhai
+npx rhaiteous ./rhaiteous/workflows/office-shopping.workflow.json
+
+# this package (sample IR under examples/out/)
+npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
+  -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
+```
+
+```text
+/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
+```
+
+### 1. Workflow JSON
+
+[`examples/rhaiteous/workflows/office-shopping.workflow.json`](./examples/rhaiteous/workflows/office-shopping.workflow.json) — orchestration: Intake agent → parallel Inventory → Audit + `zip_filter` → parallel Procurement → parallel Purchasing → `complete` with `$ref`s.
+
+```json
+{
+  "name": "office-shopping",
+  "description": "Twice-weekly office supply cycle: intake requests, inventory items, audit, procure vendors, purchase and record transactions",
+  "phases": [
+    { "title": "Intake", "detail": "collect and deposit requests from email, chat, forms" },
+    { "title": "Inventory", "detail": "compile specific items and quantities per request" },
+    { "title": "Audit", "detail": "challenge each line across validity facets" },
+    { "title": "Procurement", "detail": "select a vendor for each surviving item" },
+    { "title": "Purchasing", "detail": "buy and record each transaction" }
+  ],
+  "args": {
+    "requests_dir": { "required": true },
+    "company_name": { "default": "Acme Office" },
+    "cycle": { "default": "twice-weekly" }
+  },
+  "schemas": {
+    "requests": "shopping-requests.schema.json",
+    "items": "shopping-items.schema.json",
+    "audit": "shopping-audit.schema.json",
+    "vendor_pick": "shopping-vendor-pick.schema.json",
+    "purchase_one": "shopping-purchase-one.schema.json"
+  },
+  "steps": [
+    { "op": "phase", "title": "Intake" },
+    {
+      "op": "agent",
+      "as": "intake",
+      "label": "intake",
+      "agent_type": "stickler",
+      "capability_mode": "read-only",
+      "output_schema": "requests",
+      "prompt": ["shopping-intake.txt"]
+    },
+    {
+      "op": "if_failed",
+      "path": "intake",
+      "then": [
+        { "op": "complete", "value": { "summary": "intake failed", "transactions": [] } }
+      ]
+    },
+    { "op": "bind", "as": "requests", "from": "intake", "field": "requests" },
+    {
+      "op": "if_empty",
+      "path": "requests",
+      "then": [
+        {
+          "op": "complete",
+          "value": { "summary": "No supply requests this cycle.", "transactions": [] }
+        }
+      ]
+    },
+    { "op": "log", "message": "Intake complete for {{args.company_name}} ({{args.cycle}})" },
+
+    { "op": "phase", "title": "Inventory" },
+    {
+      "op": "parallel",
+      "as": "inventory_results",
+      "over": "requests",
+      "item_as": "req",
+      "index_as": "ri",
+      "label_prefix": "inventory",
+      "agent_type": "analyst",
+      "capability_mode": "read-only",
+      "output_schema": "items",
+      "prompt": ["shopping-inventory.txt"]
+    },
+    { "op": "collect", "as": "items", "from": "inventory_results", "field": "items" },
+    {
+      "op": "if_empty",
+      "path": "items",
+      "then": [
+        { "op": "complete", "value": { "summary": "No line items to buy.", "transactions": [] } }
+      ]
+    },
+
+    { "op": "phase", "title": "Audit" },
+    {
+      "op": "parallel",
+      "as": "audit_results",
+      "over": "items",
+      "item_as": "item",
+      "index_as": "ai",
+      "label_prefix": "audit",
+      "agent_type": "skeptic",
+      "capability_mode": "read-only",
+      "output_schema": "audit",
+      "prompt": ["shopping-audit.txt"]
+    },
+    {
+      "op": "zip_filter",
+      "as": "survivors",
+      "dropped_as": "dropped_items",
+      "left": "items",
+      "right": "audit_results"
+    },
+    {
+      "op": "if_empty",
+      "path": "survivors",
+      "then": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "No items survived audit.",
+            "dropped": { "$ref": "dropped_items" },
+            "transactions": []
+          }
+        }
+      ]
+    },
+    { "op": "log", "message": "Audit complete for {{args.company_name}}" },
+
+    { "op": "phase", "title": "Procurement" },
+    {
+      "op": "parallel",
+      "as": "procurement_results",
+      "over": "survivors",
+      "item_as": "item",
+      "index_as": "pi",
+      "label_prefix": "procure",
+      "agent_type": "analyst",
+      "capability_mode": "read-only",
+      "output_schema": "vendor_pick",
+      "prompt": ["shopping-procurement.txt"]
+    },
+    { "op": "collect", "as": "vendor_picks", "from": "procurement_results", "field": "picks" },
+    {
+      "op": "if_empty",
+      "path": "vendor_picks",
+      "then": [
+        {
+          "op": "complete",
+          "value": {
+            "summary": "procurement produced no vendor picks",
+            "items": { "$ref": "survivors" },
+            "transactions": []
+          }
+        }
+      ]
+    },
+
+    { "op": "phase", "title": "Purchasing" },
+    {
+      "op": "parallel",
+      "as": "purchase_results",
+      "over": "vendor_picks",
+      "item_as": "pick",
+      "index_as": "xi",
+      "label_prefix": "purchase",
+      "agent_type": "general-purpose",
+      "capability_mode": "execute",
+      "output_schema": "purchase_one",
+      "prompt": ["shopping-purchasing.txt"]
+    },
+    {
+      "op": "collect",
+      "as": "transactions",
+      "from": "purchase_results",
+      "field": "transactions"
+    },
+    {
+      "op": "complete",
+      "value": {
+        "summary": "office shopping cycle complete",
+        "requests": { "$ref": "requests" },
+        "items_audited": { "$ref": "survivors" },
+        "dropped": { "$ref": "dropped_items" },
+        "vendor_picks": { "$ref": "vendor_picks" },
+        "transactions": { "$ref": "transactions" }
+      }
+    }
+  ]
+}
+```
+
+### 2. Schemas (under `{base}/schemas/`)
+
+| Binding | File | Station |
+|---------|------|---------|
+| `requests` | [`shopping-requests.schema.json`](./examples/rhaiteous/schemas/shopping-requests.schema.json) | Intake |
+| `items` | [`shopping-items.schema.json`](./examples/rhaiteous/schemas/shopping-items.schema.json) | Inventory |
+| `audit` | [`shopping-audit.schema.json`](./examples/rhaiteous/schemas/shopping-audit.schema.json) | Audit (`real` + multi-facet + `evidence[]`) |
+| `vendor_pick` | [`shopping-vendor-pick.schema.json`](./examples/rhaiteous/schemas/shopping-vendor-pick.schema.json) | Procurement (`picks[1]` for `collect`) |
+| `purchase_one` | [`shopping-purchase-one.schema.json`](./examples/rhaiteous/schemas/shopping-purchase-one.schema.json) | Purchasing (`transactions[1]` for `collect`) |
+
+Example — Intake contract (others use the same `$comment` + JSON Schema style; full text in the [example doc](./docs/office-shopping-example.md)):
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/shopping-requests.schema.json",
+  "$comment": "Intake station: every supply request gathered from email, chat, forms, etc., deposited into a structured catalog for the shopping cycle.",
+  "title": "ShoppingRequestsResult",
+  "type": "object",
+  "required": ["requests", "notes"],
+  "properties": {
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "channel", "requester", "summary", "body", "source"],
+        "properties": {
+          "id": { "type": "string" },
+          "channel": { "type": "string" },
+          "requester": { "type": "string" },
+          "summary": { "type": "string" },
+          "body": { "type": "string" },
+          "source": { "type": "string" },
+          "received_at": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}
+```
+
+### 3. Prompts (under `{base}/prompts/`)
+
+Each step `prompt` is an **array of file names**. Bodies may use `{{args…}}` and loop bindings (`{{req…}}`, `{{item…}}`, `{{pick…}}`).
+
+**Intake** — [`shopping-intake.txt`](./examples/rhaiteous/prompts/shopping-intake.txt):
+
+```text
+You are the Intake station for a twice-weekly office supply shopping cycle.
+
+Company: {{args.company_name}}
+Cycle label: {{args.cycle}}
+Requests root: {{args.requests_dir}}
+
+Collect every supply request you can find under the requests root (email exports,
+chat transcripts, forms, notes). For each request:
+- assign a stable id (req-001, …)
+- record channel, requester, summary, full body
+- set source to a path or locator so later stations can re-open it
+- deposit (reposit) it into the structured requests array — do not leave raw-only
+
+Skip spam and pure conversation with no supply ask.
+notes = short intake narrative (what you covered, what you skipped).
+Return the shopping-requests schema.
+```
+
+**Inventory** — [`shopping-inventory.txt`](./examples/rhaiteous/prompts/shopping-inventory.txt) (per request in parallel):
+
+```text
+You are the Inventory station for a twice-weekly office shopping cycle.
+Normalize THIS deposited request into concrete buyable line items.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Request:
+id: {{req.id}}
+channel: {{req.channel}}
+requester: {{req.requester}}
+summary: {{req.summary}}
+body: {{req.body}}
+source: {{req.source}}
+
+Rules:
+- emit zero or more specific products (not vague categories)
+- quantity + unit must be explicit
+- request_ids must include {{req.id}} (and only this request for this shard)
+- evidence: array of {source, quote} citing this request
+- id format: {{req.id}}-item-1, {{req.id}}-item-2, …
+
+Return the shopping-items schema (items array for this request only).
+```
+
+**Audit** — [`shopping-audit.txt`](./examples/rhaiteous/prompts/shopping-audit.txt):
+
+```text
+You are the Audit station. Adversarially validate ONE line item for this office shopping cycle.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Line under review:
+id: {{item.id}}
+name: {{item.name}}
+quantity: {{item.quantity}}
+unit: {{item.unit}}
+
+Challenge validity across ALL facets (fill each facets.* field):
+- necessity — needed for operations this cycle?
+- quantity_sane — proportional, not a bulk accident?
+- not_duplicate — not already covered elsewhere?
+- policy_ok — allowed under normal small-office purchasing policy?
+- budget_reasonable — spend plausible for a twice-weekly cycle?
+
+real=true only when the line should proceed to procurement.
+evidence must be a non-empty array of {source, quote} you can stand behind
+(paths, request ids, or policy notes). Return the same id.
+Return the shopping-audit schema.
+```
+
+**Procurement** — [`shopping-procurement.txt`](./examples/rhaiteous/prompts/shopping-procurement.txt):
+
+```text
+You are the Procurement station. Choose ONE vendor for this audited line item.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Line item:
+id: {{item.id}}
+name: {{item.name}}
+quantity: {{item.quantity}}
+unit: {{item.unit}}
+
+Return picks as a one-element array with:
+- item_id = {{item.id}}
+- vendor_name, fulfillment (URL/SKU/instruction)
+- optional unit_price_estimate + currency
+- rationale, evidence[{source,quote}]
+
+Return the shopping-vendor-pick schema.
+```
+
+**Purchasing** — [`shopping-purchasing.txt`](./examples/rhaiteous/prompts/shopping-purchasing.txt):
+
+```text
+You are the Purchasing station. Purchase (or simulate) THIS vendor pick and record one transaction.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Vendor pick:
+item_id: {{pick.item_id}}
+vendor_name: {{pick.vendor_name}}
+fulfillment: {{pick.fulfillment}}
+
+Perform a real purchase when tools/capability allow; otherwise status=simulated
+with an honest confirmation_ref. Return transactions as a one-element array:
+id (txn-…), item_id, vendor_name, quantity, status, confirmation_ref, notes,
+optional amount/currency.
+
+Return the shopping-purchase-one schema.
+```
+
+### 4. Generated Rhai (output only)
+
+```bash
+# produces .grok/workflows/office-shopping.rhai (or examples/out/… with -o)
+```
+
+You maintain JSON + schemas + prompts; Rhaiteous emits the IR Grok runs.
 
 ## Workflow JSON (summary)
 
@@ -267,14 +705,12 @@ More context: **[docs/design.md](./docs/design.md)**.
 
 | Example | What it shows |
 |---------|----------------|
-| [`examples/rhaiteous/workflows/minimal.workflow.json`](./examples/rhaiteous/workflows/minimal.workflow.json) | One agent, one schema, args, `if_failed`, `complete_from` |
-| [`examples/rhaiteous/workflows/client-issues.workflow.json`](./examples/rhaiteous/workflows/client-issues.workflow.json) | Intake → parallel analysis → parallel challenge → `zip_filter` → complete with `$ref`s |
+| [`examples/rhaiteous/workflows/office-shopping.workflow.json`](./examples/rhaiteous/workflows/office-shopping.workflow.json) | Full 5-station shopping cycle — see [Complete example](#complete-example-twice-weekly-office-shopping) and [docs/office-shopping-example.md](./docs/office-shopping-example.md) |
 
 Regenerate sample IR (package demos → `examples/out/`):
 
 ```bash
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous -o ./examples/out/minimal-summary.rhai
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json -b ./examples/rhaiteous -o ./examples/out/client-issues.rhai
+npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
 ```
 
 ## Tests

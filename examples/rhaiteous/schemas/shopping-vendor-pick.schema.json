@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/shopping-vendor-pick.schema.json",
+  "$comment": "Procurement station (per line): one vendor choice wrapped in picks[] so parallel results can be collect'ed.",
+  "title": "ShoppingVendorPickResult",
+  "type": "object",
+  "required": ["picks"],
+  "properties": {
+    "picks": {
+      "$comment": "Always a single-element array for this shard (the item under review).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["item_id", "vendor_name", "fulfillment", "rationale", "evidence"],
+        "properties": {
+          "item_id": { "type": "string" },
+          "vendor_name": { "type": "string" },
+          "fulfillment": {
+            "$comment": "URL, SKU, catalog id, or buy instruction.",
+            "type": "string"
+          },
+          "unit_price_estimate": { "type": "number" },
+          "currency": { "type": "string" },
+          "rationale": { "type": "string" },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source", "quote"],
+              "properties": {
+                "source": { "type": "string" },
+                "quote": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/shopping-audit.schema.json",
+  "$comment": "Audit station: adversarial check of one line item across necessity, quantity, policy, duplicates, and budget reasonableness. zip_filter keeps items when real==true and evidence is non-empty.",
+  "title": "ShoppingAuditVerdict",
+  "type": "object",
+  "required": ["id", "real", "reason", "facets", "evidence"],
+  "properties": {
+    "id": {
+      "$comment": "Must match the line item id under review.",
+      "type": "string"
+    },
+    "real": {
+      "$comment": "true only when the line should proceed to procurement. false drops it in zip_filter.",
+      "type": "boolean"
+    },
+    "reason": {
+      "$comment": "Short overall rationale for pass/fail.",
+      "type": "string"
+    },
+    "facets": {
+      "$comment": "Structured multi-facet audit notes (validity dimensions).",
+      "type": "object",
+      "required": [
+        "necessity",
+        "quantity_sane",
+        "not_duplicate",
+        "policy_ok",
+        "budget_reasonable"
+      ],
+      "properties": {
+        "necessity": {
+          "$comment": "Is this needed for office operations this cycle?",
+          "type": "string"
+        },
+        "quantity_sane": {
+          "$comment": "Is quantity proportional to headcount / burn rate?",
+          "type": "string"
+        },
+        "not_duplicate": {
+          "$comment": "Not already covered by another line or recent purchase.",
+          "type": "string"
+        },
+        "policy_ok": {
+          "$comment": "Allowed under company purchasing policy.",
+          "type": "string"
+        },
+        "budget_reasonable": {
+          "$comment": "Plausible spend for a small office cycle.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "$comment": "Independent citations supporting the verdict. Empty array drops the item even if real were true.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "quote"],
+        "properties": {
+          "source": { "type": "string" },
+          "quote": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

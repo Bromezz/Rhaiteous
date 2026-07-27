@@ -16,11 +16,7 @@ git remote add origin git+https://github.com/<you>/rhaiteous.git
 git push -u origin main
 ```
 
-3. Update `package.json` when ready to publish:
-
-- set `"private": false`
-- set `repository`, `bugs`, and `homepage` URLs
-- optionally `npm publish` (after npm login)
+3. Package metadata and npm: this package is published as [`rhaiteous`](https://www.npmjs.com/package/rhaiteous). For a new release, bump `version`, then `npm publish --access public` (with auth/2FA as required).
 
 ## Suggested GitHub settings
 
@@ -34,6 +30,5 @@ git push -u origin main
 
 ```bash
 npm test
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/minimal.workflow.json -b ./examples/rhaiteous --dry-run
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/client-issues.workflow.json -b ./examples/rhaiteous --dry-run
+node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous --dry-run
 ```

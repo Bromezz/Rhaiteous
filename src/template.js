@@ -101,7 +101,7 @@ function parseTemplate(template) {
 
 /*
  * @description map a template ref path to a Rhai expression
- * @param refPath - path such as args.docs_dir, item, index, or a binding
+ * @param refPath - path such as args.requests_dir, item, index, or a binding
  * @param scope - { argsLocals: object, itemAs?: string, indexAs?: string, knownVars: object }
  * @returns Rhai expression string that evaluates to a string-ish value
  */
@@ -137,7 +137,7 @@ function refToRhaiExpr(refPath, scope) {
     if (segments.length < 2) {
 
       //bare args is not supported in templates
-      throw new Error("template ref 'args' requires a field (e.g. args.docs_dir)");
+      throw new Error("template ref 'args' requires a field (e.g. args.requests_dir)");
 
     //end args-field guard
     }

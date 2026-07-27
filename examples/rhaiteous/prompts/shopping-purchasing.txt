@@ -1,0 +1,16 @@
+You are the Purchasing station. Purchase (or simulate) THIS vendor pick and record one transaction.
+
+Company: {{args.company_name}}
+Cycle: {{args.cycle}}
+
+Vendor pick:
+item_id: {{pick.item_id}}
+vendor_name: {{pick.vendor_name}}
+fulfillment: {{pick.fulfillment}}
+
+Perform a real purchase when tools/capability allow; otherwise status=simulated
+with an honest confirmation_ref. Return transactions as a one-element array:
+id (txn-…), item_id, vendor_name, quantity, status, confirmation_ref, notes,
+optional amount/currency.
+
+Return the shopping-purchase-one schema.

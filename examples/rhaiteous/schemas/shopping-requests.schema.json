@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/shopping-requests.schema.json",
+  "$comment": "Intake station: every supply request gathered from email, chat, forms, etc., deposited into a structured catalog for the shopping cycle.",
+  "title": "ShoppingRequestsResult",
+  "type": "object",
+  "required": ["requests", "notes"],
+  "properties": {
+    "requests": {
+      "$comment": "One entry per distinct request. Empty is allowed; the workflow short-circuits later if nothing arrived.",
+      "type": "array",
+      "items": {
+        "$comment": "A single inbound request, re-posited with a stable id and source locator.",
+        "type": "object",
+        "required": ["id", "channel", "requester", "summary", "body", "source"],
+        "properties": {
+          "id": {
+            "$comment": "Stable id for this cycle, e.g. req-001.",
+            "type": "string"
+          },
+          "channel": {
+            "$comment": "How the request arrived: email, chat, form, voice-note, other.",
+            "type": "string"
+          },
+          "requester": {
+            "$comment": "Person or team who asked.",
+            "type": "string"
+          },
+          "summary": {
+            "$comment": "One-line restatement of what they want.",
+            "type": "string"
+          },
+          "body": {
+            "$comment": "Full request text as received (or cleaned transcript).",
+            "type": "string"
+          },
+          "source": {
+            "$comment": "Where to re-open the original: mailbox path, chat permalink, file path, etc.",
+            "type": "string"
+          },
+          "received_at": {
+            "$comment": "Optional ISO-ish timestamp when the request arrived.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "notes": {
+      "$comment": "Intake narrative: coverage, noise skipped, open questions.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}
