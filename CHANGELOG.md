@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Seed packs under `examples/example-*`**: versioned pack layout (`workflow.json`, `schema.json`, `stations/`, `input/`, `output/`); product ids use the **`example-`** prefix
+- **Option B npm map**: `prepack` copies `examples/example-*` → `workflows/example-*` for the tarball (`files` includes `workflows/`); `postpack` cleans the map; root `workflows/` is gitignored
+- **example-office-shopping** and **example-issues-birthday** seed packs
+- **Generated `.rhai` BUILD ARTIFACT banner**: every compile opens with a clear header that the file is for analysis only, not editing; authoring surface remains JSON + schemas + prompts
+- **Generated `workflow.md`**: every compile emits a human guide **always named `workflow.md`** in the same cycle as the Rhai IR (purpose, Grok invocation + args, stations). Written beside the authoring JSON and beside the IR when `-o …/workflow.rhai`. Build artifact — do not hand-edit.
+- **Pack-aware asset base**: if `{base}/schemas` or `{base}/prompts` is missing, resolve schemas under `{base}` and prompts under `{base}/stations/` (workflow pack layout)
+- **Flow authoring**: `stations[]` of station objects; compiler derives `meta.phases`, emits one `fn` per station, `flow` envelope, and `Fn(flow.next).call(flow)` driver
+- **Flow station `schemas`**: optional array of top-level schema bindings; embedded in the station prompt under **Additional Schemas** as best-effort guidance (not host-enforced beyond the flow envelope)
+- **Schema `$ref` inlining**: compile-time resolution of external file and in-document `$ref` / JSON pointers under `{base}/schemas/` (`src/schema-inline.js`)
+- **Flow `payloadSchema`**: optional payload file path; inlined into flow envelope as `flow.payload` (host-checked via `make_flow_schema()`)
+- **Top-level `prompts`**: binding → path under `{base}/prompts/`; station `prompt` arrays list binding names merged in order (e.g. `flow_common` + station file)
+- **Flow args injection**: declared workflow `args` are appended to each station prompt as **Workflow args (JSON)** so station prompts can stay source-agnostic
+
+### Changed
+
+- Author field **`uiDescription`** (stations) replaces phase `detail`; still emitted as Grok `meta.phases[].detail`
+- Top-level `schemas` bindings are loaded with `$ref` inlining (not raw file parse only)
+- Flow envelope always includes `payload` (nullable object default when `payloadSchema` omitted)
+- Stations without `workflow.prompts` still accept legacy prompt **file paths**
+- **`args` defaults are flat**: the value after the key is the default (e.g. `"out_dir": "experiments/…/out"`). Nested `{ "default": … }` is rejected. Required remains `true` or `{ "required": true }`; optional-without-default remains `{}`
+- **Prompt sources use Markdown (`.md`)** under `{base}/prompts/`
+
+### Removed
+
+- **`scriptType: "step"`** and **`workflow.steps[]`** (linear step ops: `agent`/`parallel`/`if`/`set`/…). Rhaiteous is **flow-only** (`stations[]`). `"step"` and `steps` fail closed at compile time.
+- Hand-authored **`workflow.phases`** (phases are always derived from stations)
+- Legacy **`examples/rhaiteous/`** shared-base tree and **`examples/out/`** sample IR dump (replaced by `examples/example-*` packs)
+
+### Migrated
+
+- **office-shopping** example rewritten as a five-station flow with `shopping-payload.schema.json` and `prompts/stations/*.md`
+
 ## [0.3.1] — 2026-07-27
 
 ### Added

@@ -109,8 +109,37 @@ function isBareRhaiIdent(key) {
   //end pattern guard
   }
 
-  //quote Rhai reserved words used often in JSON Schema
-  if (key === "type" || key === "const" || key === "void" || key === "fn" || key === "true" || key === "false") {
+  //quote Rhai reserved words that appear as JSON Schema (or other) map keys
+  //bare keys become identifier tokens and fail the post-emit keyword scan
+  if (
+    key === "type" ||
+    key === "const" ||
+    key === "default" ||
+    key === "void" ||
+    key === "fn" ||
+    key === "true" ||
+    key === "false" ||
+    key === "if" ||
+    key === "else" ||
+    key === "switch" ||
+    key === "for" ||
+    key === "while" ||
+    key === "loop" ||
+    key === "return" ||
+    key === "throw" ||
+    key === "try" ||
+    key === "catch" ||
+    key === "import" ||
+    key === "export" ||
+    key === "as" ||
+    key === "let" ||
+    key === "const" ||
+    key === "var" ||
+    key === "is" ||
+    key === "in" ||
+    key === "this" ||
+    key === "global"
+  ) {
 
     //reserved words must be quoted
     return false;

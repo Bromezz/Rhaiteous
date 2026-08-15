@@ -1,46 +1,55 @@
-# Examples
+# Examples (seed packs)
 
-The package ships one full authoring tree: the **twice-weekly office shopping** pipeline.
+Product demo workflows, **versioned in git** under this directory.
 
-## Layout
+| Pack directory | Workflow `name` / Grok id | Role |
+|----------------|---------------------------|------|
+| [`example-office-shopping/`](./example-office-shopping/) | `example-office-shopping` | Linear multi-station supply cycle |
+| [`example-issues-birthday/`](./example-issues-birthday/) | `example-issues-birthday` | Issues mining + curated corpus (birthday fixture) |
+
+## Conventions
+
+- Directory name = `workflow.json` `"name"` = Grok `/workflow` id.
+- Product seeds always use the **`example-`** prefix (distinguish from user packs; easy to ignore under RCS).
+- Pack layout:
 
 ```text
-examples/
-  rhaiteous/                    # asset base (-b ./examples/rhaiteous)
-    workflows/
-      office-shopping.workflow.json
-    schemas/                    # shopping-*.schema.json
-    prompts/                    # shopping-*.txt
-  out/
-    office-shopping.rhai        # sample generated IR
+examples/example-<name>/
+  workflow.json      # authoring
+  schema.json        # payload schema
+  stations/          # prompts (.md) + station schemas
+  input/             # sample sources
+  output/            # runtime (empty in git)
 ```
 
-In a real Grok Build project, the same shape lives at the repo root as `./rhaiteous/…`, and the compiler’s **default** output is **`.grok/workflows/<name>.rhai`**. These package demos write sample IR under `examples/out/` so this repo does not depend on a local `.grok/` tree.
+## npm packaging (Option B)
 
-**User guide (concepts, every step, all files):**  
-→ [docs/office-shopping-example.md](../docs/office-shopping-example.md)
+| Layer | Path |
+|-------|------|
+| **Git (this folder)** | `examples/example-*` |
+| **npm tarball** | `workflows/example-*` (via `npm prepack` → `scripts/map-examples-to-workflows.mjs`) |
+| **Host after init** | `./workflows/example-*` (copy from the package) |
 
-## office-shopping
+The published package does **not** ship a top-level `examples/` tree; consumers only see `node_modules/rhaiteous/workflows/example-*/`.
 
-- Path: `rhaiteous/workflows/office-shopping.workflow.json`
-- Stations: Intake → Inventory → Audit (`zip_filter`) → Procurement → Purchasing
-- Schemas: `shopping-requests`, `shopping-items`, `shopping-audit`, `shopping-vendor-pick`, `shopping-purchase-one`
-- Prompts: `shopping-intake.txt` … `shopping-purchasing.txt`
-- **Branching + `set`:** `if_failed`/`if_empty` with `else`; multi-way `if` / `else_if` / `else` after audit; `set` for `cycle_status` / `final_report`; final `if`/`else` on transactions
-- `evidence` is an array of `{ "source", "quote" }`
+## Compile a pack (local)
 
 ```bash
-npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
-  -b ./examples/rhaiteous \
-  -o ./examples/out/office-shopping.rhai
-# from a clone without install:
-# node ./bin/rhaiteous.js … (same args)
+npx rhaiteous ./examples/example-office-shopping/workflow.json \
+  -b ./examples/example-office-shopping \
+  -o ./examples/example-office-shopping/workflow.rhai
 ```
+
+Writes **`workflow.rhai`** and **`workflow.md`** in the same directory (build artifacts; gitignored).
+
+## Run (Grok)
+
+After compiling and publishing IR to `.grok/workflows/<name>.rhai`:
 
 ```text
-/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
+/workflow example-office-shopping {"requests_dir":"workflows/example-office-shopping/input"}
+
+/workflow example-issues-birthday {}
 ```
 
-## Note on generated `out/`
-
-Files under `out/` are **compiler output**. Prefer editing `rhaiteous/workflows/*`, `schemas/*`, and `prompts/*`, then recompile. They are committed so visitors can inspect IR without running Node.
+In a real host project, packs live under **`workflows/`** (not `examples/`). Paths in default args assume that host layout after init.

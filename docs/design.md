@@ -12,19 +12,21 @@ Exposing raw Rhai as the **only** authoring surface has sharp edges:
 
 1. **JSON Schema is a foreign format.** Host `output_schema` expects a Rhai map, so `"type"` must be quoted and maps use `#{...}`. Authors lose standard schema tooling and readability.
 2. **No modular schema include** in the documented workflow host API for loading `.schema.json` from disk into `output_schema`.
-3. **Orchestration is easier to review as data** for many pipelines (stations, fan-out, gates) than as a general-purpose script.
+3. **Orchestration is easier to review as data** for many pipelines (stations, re-entry, shared payload) than as a general-purpose script.
 
 ## Approach
 
 Treat Rhai as **intermediate representation (IR)**:
 
 ```text
-Author:  JSON workflow + JSON Schema files
+Author:  JSON workflow + JSON Schema files + Markdown prompts
 Compile: Rhaiteous (this project; CLI: rhaiteous)
 Run:     Grok Build workflow host
 ```
 
-This is the same split many systems use (YAML/JSON → engine IR), without waiting for a first-party JSON frontend in Grok.
+Rhaiteous is **flow-only**: `stations[]` → `meta.phases` + one station `fn` per entry + shared `flow` envelope + `while flow.next` driver. Stations may list `schemas` for best-effort **Additional Schemas** guidance. Optional **`payloadSchema`** is compile-time `$ref`-inlined into the host-checked **`flow.payload`**.
+
+Linear `steps[]` / `scriptType: "step"` were removed; multi-agent pipelines are expressed as stations with agent-owned routing and payload.
 
 ## Goals
 
@@ -40,6 +42,7 @@ This is the same split many systems use (YAML/JSON → engine IR), without waiti
 - Replace Rhai for power users who want full host API access  
 - Full general-purpose programming language in JSON  
 - Round-trip decompile Rhai → JSON  
+- Host-level `parallel` fan-out as a first-class JSON op (stations handle lists in-agent, or use custom IR later)  
 - Official affiliation with or endorsement by xAI  
 
 ## Architecture
@@ -48,7 +51,8 @@ This is the same split many systems use (YAML/JSON → engine IR), without waiti
 |--------|----------------|
 | `json-to-rhai.js` | Faithful emission of JSON values as Rhai literals |
 | `template.js` | `{{refs}}` → Rhai string concatenation statements |
-| `compile-workflow.js` | Dialect validation, schema load, step emit, file I/O |
+| `schema-inline.js` | Compile-time JSON Schema `$ref` resolution |
+| `compile-workflow.js` | Flow validation, schema load, station emit, file I/O |
 | `cli.js` | `parseArgs`, exit codes, stdout/stderr policy |
 | `rhai-keywords.js` | Load/check shipped Rhai keyword list; format multi-violation reports |
 | `data/rhai-keywords.txt` | Active + reserved Rhai keywords (identifier ban-list) |
@@ -56,37 +60,30 @@ This is the same split many systems use (YAML/JSON → engine IR), without waiti
 ### Schema pipeline
 
 1. Workflow lists `schemas: { binding: "file.schema.json" }` (paths under `{base}/schemas/`)  
-2. Compiler `JSON.parse`s each file  
-3. Emitter writes `let <binding>_schema = #{ ... };`  
-4. Steps set `output_schema: <binding>_schema`  
-5. Step `prompt` lists files under `{base}/prompts/`; bodies are concatenated with section banners, then `{{templates}}` expand into Rhai string builds  
+2. Compiler loads and **inlines `$ref`s**  
+3. Emitter writes `let <binding>_schema = #{ ... };` for bindings  
+4. Station `schemas[]` embeds selected documents under **Additional Schemas**  
+5. Optional `payloadSchema` is inlined into `make_flow_schema()` as `properties.payload`  
+6. Station prompts list Markdown under `{base}/prompts/`; bodies are concatenated with banners; `{{templates}}` expand into Rhai string builds  
 
 Authors never maintain the Rhai form. Default `base` is `./rhaiteous` (CLI `-b` / `--base`).
 
-### Binding / scope pipeline
+### Flow / routing pipeline
 
-Steps introduce named bindings (`as`, `dropped_as`, `bind`, `collect`, …). Later steps and templates may only reference known bindings. This catches typos at compile time instead of at Grok runtime.
+- `flow.stations` is the ordered station name list  
+- Each visit: agent returns the **full flow** object under the envelope schema  
+- Default successor: next name after `flow.current` in `flow.stations`  
+- Conditional re-entry / early stop: station prompts set `flow.next` / `flow.msg`  
 
 ## Dialect philosophy
 
-v1 is a **subset** tuned to multi-stage agent pipelines (intake → parallel analyze → parallel verify → filter → complete), not a reimplementation of all Rhai.
+v1 is tuned to **multi-station agent pipelines** (intake → formulate → validate → present → qa), not a reimplementation of all Rhai or a linear step DSL.
 
-Prefer:
-
-- Adding a clear new `op` with fail-closed validation  
-- Over dumping raw Rhai escape hatches without structure  
-
-**Branching:** structured `if` / `else_if` / `else` with a **closed** set of `when.kind` values (`empty`, `nonempty`, `failed`, `succeeded`). `if_empty` / `if_failed` remain as sugar (optional `else`). No free-form Rhai predicates.
-
-**Assignment:** `set` introduces or reassigns a binding from a JSON/`$ref` value tree (`value` optional → unit `()`). Bindings assigned only inside branch arms are hoisted with `let name = ()` before the branch so they remain visible afterward.
-
-**Rhai keyword guard:** Author-controlled identifiers are checked against a shipped list (`src/data/rhai-keywords.txt`, Node stdlib only). Violations are collected (not fail-fast) and reported with origin labels; a post-emit scan is a safety net. Intentional language tokens in IR (`let`, `if`, `for`, …) are allowlisted for that scan.
-
-If an escape hatch is added later, document it as IR leakage and keep it optional.
+**Rhai keyword guard:** Author-controlled identifiers are checked against a shipped list (`src/data/rhai-keywords.txt`). Violations are collected and reported with origin labels; a post-emit scan is a safety net.
 
 ## Compatibility
 
-- **Grok Build** evolves; emitted scripts target the documented host API (`agent`, `parallel`, `phase`, `complete`, `pause`, `await_user`, `output_schema`, `capability_mode`, `agent_type`, …).  
+- **Grok Build** evolves; emitted scripts target the documented host API (`agent`, `phase`, `complete`, `pause`, `await_user`, `output_schema`, `capability_mode`, …).  
 - Recompile when upgrading expectations around meta shape or host functions.  
 - This project’s **semver** applies to the JSON dialect and Node API, not to Grok itself.
 
@@ -95,9 +92,3 @@ If an escape hatch is added later, document it as IR leakage and keep it optiona
 - Compiler reads only paths you pass (workflow file + schema paths you declare).  
 - Generated prompts embed template data as Rhai strings; treat untrusted document content carefully when you pass it through templates or args.  
 - Do not compile untrusted workflow JSON in privileged environments without review (same as running any code generator).
-
-## Related reading
-
-- Grok Build workflow skill / user guide (workflows, budgets, resume)  
-- [Rhai language](https://rhai.rs/) (underlying script language)  
-- [JSON Schema](https://json-schema.org/) (authoring contracts)

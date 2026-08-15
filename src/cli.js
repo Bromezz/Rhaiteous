@@ -32,6 +32,11 @@ function printUsage() {
     "  ./.grok/workflows/<workflow.name>.rhai\n" +
     "(project location; also supported by Grok: ~/.grok/workflows/)\n" +
     "\n" +
+    "In the same compile cycle it also writes a human guide always named:\n" +
+    "  workflow.md\n" +
+    "beside the authoring workflow JSON (and beside the IR when -o …/workflow.rhai).\n" +
+    "Both .rhai and workflow.md are build artifacts — do not hand-edit.\n" +
+    "\n" +
     "Options:\n" +
     "  -o, --out <path>   Output .rhai path (default: .grok/workflows/<name>.rhai)\n" +
     "  -b, --base <path>  Asset base with schemas/, prompts/, workflows/ (default: rhaiteous)\n" +
@@ -185,7 +190,11 @@ function main() {
 
     //dry-run summary
     nodeProcess.stderr.write(
-      "ok: compiled " + result.name + " (" + result.rhai.length + " bytes, dry-run)\n"
+      "ok: compiled " +
+        result.name +
+        " (" +
+        result.rhai.length +
+        " bytes Rhai + workflow.md, dry-run)\n"
     );
 
   } else if (values.stdout) {
@@ -197,10 +206,25 @@ function main() {
 
   } else {
 
-    //wrote file
+    //wrote rhai
     nodeProcess.stderr.write(
       "ok: wrote " + nodePath.resolve(result.outputPath) + "\n"
     );
+
+    //wrote workflow.md path(s)
+    if (Array.isArray(result.workflowMdPaths) && result.workflowMdPaths.length > 0) {
+
+      //each guide path
+      result.workflowMdPaths.forEach(function logMd(p) {
+
+        //status line
+        nodeProcess.stderr.write("ok: wrote " + nodePath.resolve(p) + "\n");
+
+      //end forEach
+      });
+
+    //end md log
+    }
 
   //end status branch
   }

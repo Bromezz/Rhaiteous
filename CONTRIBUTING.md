@@ -11,29 +11,46 @@ Thanks for helping improve **Rhaiteous**.
 
 ```bash
 npm test
-# equivalent:
-node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js
 ```
 
-5. Compile examples:
+5. Compile a seed pack:
 
 ```bash
-node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai
+npm run example:compile
+# or:
+node ./bin/rhaiteous.js ./examples/example-office-shopping/workflow.json \
+  -b ./examples/example-office-shopping \
+  -o ./examples/example-office-shopping/workflow.rhai
+```
+
+6. Preview npm seed layout (Option B map):
+
+```bash
+npm run map:workflows    # → workflows/example-* (gitignored)
+npm run clean:workflows
 ```
 
 ## Project conventions
 
+### Seed packs
+
+- Live under **`examples/example-*`** only (versioned).
+- Directory name = `workflow.json` `"name"` = Grok id; always **`example-`** prefix.
+- Pack shape: `workflow.json`, `schema.json`, `stations/`, `input/`, `output/`.
+- Do **not** commit `workflow.rhai` / `workflow.md` (gitignored build products).
+- **`workflows/`** at repo root is **prepack output** for npm — gitignored; not an authoring tree.
+
 ### Code style
 
-This codebase follows strict comment-and-layout rules (see historical project rules if present). In short:
+This codebase follows strict comment-and-layout rules. In short:
 
 - **2-space** indent; no tabs  
 - Every one-line statement is preceded by a same-indent `//` comment  
 - Blank line before every comment after the first in a file  
 - No space after `//` (`//correct`, not `// correct`)  
 - Inline comments start with a **lowercase** letter  
-- Functions use a short block doc comment (`@description`, `@param`, `@returns`) instead of a leading `//`  
-- Prefer **structured imports** and **whole-object** module surfaces (`import nodeFs from "node:fs"`, `compileMod.compileWorkflow(...)`) over heavy destructuring  
+- Functions use a short block doc comment (`@description`, `@param`, `@returns`)  
+- Prefer **structured imports** and **whole-object** module surfaces  
 
 Match surrounding files when editing.
 
@@ -41,16 +58,16 @@ Match surrounding files when editing.
 
 - **Fail closed** on unknown dialect features  
 - Keep the **CLI and library** on the same implementation (`compile-workflow.js`)  
-- Prefer **deterministic** emit (stable key order, stable formatting) for readable diffs  
-- Document dialect changes in `docs/workflow-json.md` and mention them in the PR  
-- Update examples when you change the dialect in a breaking way  
+- Prefer **deterministic** emit for readable diffs  
+- Document dialect changes in `docs/workflow-json.md`  
+- Update **example packs** when you change the dialect in a breaking way  
+- Keep **`experiments/`** local only (gitignored)  
 
 ## Pull requests
 
 1. Add or update **tests** for compiler behavior changes.  
-2. Update **docs** (`README.md`, `docs/*`) when user-visible behavior changes.  
-3. Keep generated sample IR under `examples/out/` in sync if you change emission (or note why not).  
-4. Describe **motivation** and **dialect impact** (additive vs breaking).  
+2. Update **docs** (`README.md`, `examples/README.md`, `docs/*`) when user-visible behavior changes.  
+3. Describe **motivation** and **dialect impact** (additive vs breaking).  
 
 ## Reporting issues
 
@@ -58,16 +75,4 @@ Include:
 
 - Node version (`node --version`)  
 - Command line or library call used  
-- Minimal workflow JSON (and schemas if relevant)  
-- Full error output  
-
-## Scope
-
-Useful contributions:
-
-- New step `op`s that map cleanly to Grok host calls  
-- Better diagnostics  
-- Optional JSON Schema **meta-schema** for workflow documents  
-- Packaging / CI / editor helpers  
-
-Please open an issue before large dialect redesigns so we can keep the authoring surface small and teachable.
+- Minimal workflow JSON / pack layout when relevant  

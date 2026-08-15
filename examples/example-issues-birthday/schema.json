@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/packs/example-issues-birthday/schema.json",
+  "title": "IssuesPayload",
+  "description": "Workflow payload: source corpus locations, curated Markdown path, and issues list as peer fields (for flow.payload when merged into the flow envelope).",
+  "type": "object",
+  "required": [
+    "sources",
+    "curated",
+    "items"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sources": {
+      "description": "Corpus locations from the job when valid; JSON null if Intake found no valid sources (orchestrator may apply a demo default).",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "source"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "directory",
+                  "file",
+                  "url"
+                ],
+                "description": "Kind of location the source string refers to."
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Location string matching type: directory path, file path, or URL."
+              }
+            }
+          }
+        }
+      ]
+    },
+    "curated": {
+      "description": "Path or filename of the Markdown file that holds reduced text for every verified source. Null until Intake finishes curation (or when no sources verified).",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the curated .md file (usually under out_dir)."
+        }
+      ]
+    },
+    "items": {
+      "type": "array",
+      "description": "List of issues surfaced during analysis of communications between numerous parties. Order may match each item's id when ids are assigned as placement order, but ids are only a shorthand reference during processing and need only be unique within this list.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "detail",
+          "reasons",
+          "validated",
+          "quality",
+          "discrepancies"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Unique shorthand identifier for this issue within the list (handy for cross-references during processing; not a permanent external key)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Brief summary name for the issue."
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Detailed description of the issue."
+          },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "description": "One or more rationales supporting inclusion.",
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "quote",
+                "confirmed"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Where in the source material this justification was found (file and entity/identity)."
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Quotation from the source material supporting inclusion."
+                },
+                "confirmed": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether source and quote have been independently confirmed as true and accurate."
+                }
+              }
+            }
+          },
+          "validated": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this issue has been designated valid."
+          },
+          "quality": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this issue has been approved by quality assurance."
+          },
+          "discrepancies": {
+            "type": "array",
+            "description": "Problems raised against this item, with remediation status.",
+            "default": [],
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "station",
+                "agent",
+                "discrepancy",
+                "resolution"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Unique shorthand identifier for this discrepancy within this issue's discrepancies array (for processing references only)."
+                },
+                "station": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Workflow station that applied this discrepancy."
+                },
+                "agent": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Agent or job identity that applied this discrepancy."
+                },
+                "discrepancy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Precise description of the problem."
+                },
+                "resolution": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "pending",
+                    "closed"
+                  ],
+                  "description": "open = unresolved; pending = remedy applied; closed = adequately remediated."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

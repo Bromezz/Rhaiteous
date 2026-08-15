@@ -1,0 +1,83 @@
+{
+  "name": "example-issues-birthday",
+  "description": "Example seed: source-agnostic issues mining (Intake curated corpus → Formulation ⇄ Validation → Presentation → QA) over a birthday-planning fixture.",
+  "payloadSchema": "schema.json",
+  "args": {
+    "source_candidates": [
+      {
+        "type": "file",
+        "source": "workflows/example-issues-birthday/input/birthday-party-discussion.md"
+      },
+      {
+        "type": "url",
+        "source": "https://www.wikihow.com/Plan-a-Birthday-Party"
+      }
+    ],
+    "out_dir": "workflows/example-issues-birthday/output",
+    "curated": null,
+    "flow_json_name": "example-issues-birthday-flow.json",
+    "issues_md_name": "example-issues-birthday-issues.md",
+    "report_title": "Birthday planning issues"
+  },
+  "schemas": {
+    "formulation_state": "stations/formulation-state.schema.json"
+  },
+  "prompts": {
+    "flow_common": "common.md",
+    "intake": "intake.md",
+    "formulation": "formulation.md",
+    "validation": "validation.md",
+    "presentation": "presentation.md",
+    "qa": "qa.md"
+  },
+  "stations": [
+    {
+      "name": "Intake",
+      "uiDescription": "Verify sources; curate Markdown corpus",
+      "prompt": [
+        "flow_common",
+        "intake"
+      ],
+      "capability_mode": "read-write"
+    },
+    {
+      "name": "Formulation",
+      "uiDescription": "Surface issues from curated only; itemsAdded",
+      "prompt": [
+        "flow_common",
+        "formulation"
+      ],
+      "schemas": [
+        "formulation_state"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Validation",
+      "uiDescription": "Coverage gate then skeptical validity",
+      "prompt": [
+        "flow_common",
+        "validation"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Presentation",
+      "uiDescription": "Write flow JSON + issues markdown under out_dir",
+      "prompt": [
+        "flow_common",
+        "presentation"
+      ],
+      "capability_mode": "read-write"
+    },
+    {
+      "name": "QA",
+      "uiDescription": "Polish wording and formatting",
+      "prompt": [
+        "flow_common",
+        "qa"
+      ],
+      "capability_mode": "read-write"
+    }
+  ]
+}

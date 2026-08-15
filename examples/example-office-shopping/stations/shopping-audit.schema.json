@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rhaiteous.local/schemas/shopping-audit.schema.json",
-  "$comment": "Audit station: adversarial check of one line item across necessity, quantity, policy, duplicates, and budget reasonableness. zip_filter keeps items when real==true and evidence is non-empty.",
+  "$comment": "Audit station: adversarial check of one line item across necessity, quantity, policy, duplicates, and budget reasonableness. Survivors are items with real==true and non-empty evidence.",
   "title": "ShoppingAuditVerdict",
   "type": "object",
   "required": ["id", "real", "reason", "facets", "evidence"],
@@ -11,7 +11,7 @@
       "type": "string"
     },
     "real": {
-      "$comment": "true only when the line should proceed to procurement. false drops it in zip_filter.",
+      "$comment": "true only when the line should proceed to procurement; false drops the item from survivors.",
       "type": "boolean"
     },
     "reason": {

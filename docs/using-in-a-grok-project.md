@@ -16,11 +16,14 @@ Package: [https://www.npmjs.com/package/rhaiteous](https://www.npmjs.com/package
 
 ## Mental model
 
-| You maintain (VC) | Compiler writes | Grok executes |
-|-------------------|-----------------|---------------|
-| `rhaiteous/workflows/*.workflow.json` | | |
-| `rhaiteous/schemas/*` | → **`.grok/workflows/<name>.rhai`** | `/workflow <name> {…args}` |
-| `rhaiteous/prompts/*` | | |
+| You maintain | Compiler writes (same cycle) | Grok executes |
+|--------------|------------------------------|---------------|
+| Host **`workflows/<name>/`** packs (`workflow.json`, `schema.json`, `stations/`, …) | In-pack **`workflow.rhai`** + **`workflow.md`** | `/workflow <name> {…args}` |
+| Product seeds from npm: **`node_modules/rhaiteous/workflows/example-*`** | Optional publish to **`.grok/workflows/<name>.rhai`** | |
+
+Host `workflows/` is typically **gitignored** (sandbox). Product seeds use the **`example-`** prefix. Both `.rhai` and `workflow.md` are **build artifacts** — do not hand-edit.
+
+See [examples/README.md](../examples/README.md) for Option B (`examples/` in git → `workflows/` on npm).
 
 Grok discovers **saved** workflows only from:
 
@@ -143,7 +146,7 @@ Minimal shape of a step that uses a schema + prompt file:
   "op": "agent",
   "as": "intake",
   "output_schema": "requests",
-  "prompt": ["shopping-intake.txt"]
+  "prompt": ["shopping-intake.md"]
 }
 ```
 
@@ -151,7 +154,7 @@ Minimal shape of a step that uses a schema + prompt file:
 |-------|-----------------------------|
 | Workflow | `workflows/office-shopping.workflow.json` |
 | Schemas | `schemas/shopping-requests.schema.json`, … |
-| Prompts | `prompts/shopping-intake.txt`, … |
+| Prompts | `prompts/shopping-intake.md`, … |
 
 Use `$comment` freely in schema files. Dialect reference: [workflow-json.md](./workflow-json.md).
 

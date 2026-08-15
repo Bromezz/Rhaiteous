@@ -22,6 +22,10 @@ const emitAllowlist = {
   else: true,
   for: true,
   in: true,
+  while: true,
+  fn: true,
+  Fn: true,
+  return: true,
   //host / runtime calls and common fields we emit as identifiers
   agent: true,
   parallel: true,
@@ -38,6 +42,9 @@ const emitAllowlist = {
   args: true,
   real: true,
   evidence: true,
+  call: true,
+  json_encode: true,
+  write_scratch_file: true,
 };
 
 /*

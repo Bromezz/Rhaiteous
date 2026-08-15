@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rhaiteous.local/schemas/shopping-purchase-one.schema.json",
-  "$comment": "Purchasing station (per vendor pick): one transaction wrapped in transactions[] for collect.",
+  "$comment": "Purchasing guidance: one transaction shape (transactions[] on payload).",
   "title": "ShoppingPurchaseOneResult",
   "type": "object",
   "required": ["transactions"],

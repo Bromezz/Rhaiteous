@@ -3,19 +3,51 @@
 This document defines the **authoring format** consumed by **Rhaiteous** (`rhaiteous`).  
 The compiler emits a single Grok Build Rhai script.
 
+Rhaiteous is **flow-only**: you author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not supported.
+
 ## Asset base
 
 Schemas and prompts resolve under an **asset base** directory (CLI: `-b` / `--base`, library: `options.base`).
 
+### Pack layout (preferred)
+
+Point `-b` at the pack directory (the folder that contains `workflow.json`):
+
+```text
+workflows/example-office-shopping/   # or examples/example-office-shopping/ in this repo
+  workflow.json
+  schema.json              # payloadSchema
+  stations/                # prompts (.md) + station schemas
+  input/
+  output/
+  workflow.rhai            # compile product
+  workflow.md              # compile product (always this name)
+```
+
+| Resolution | Behavior |
+|------------|----------|
+| Schemas | If `{base}/schemas/` exists, use it; else **pack root** (`schema.json`, `stations/*.schema.json`) |
+| Prompts | If `{base}/prompts/` exists, use it; else **`{base}/stations/`** |
+| `workflow.md` | Written beside authoring JSON and beside IR when `-o …/workflow.rhai` |
+
+### Legacy multi-workflow base
+
 | Path | Contents |
 |------|----------|
-| `{base}/workflows/` | Convention: `*.workflow.json` authoring files (under VC) |
-| `{base}/schemas/` | JSON Schema files listed in workflow `schemas` |
-| `{base}/prompts/` | Prompt source files listed in each step `prompt` |
+| `{base}/schemas/` | JSON Schema files |
+| `{base}/prompts/` | Prompt Markdown |
 
-Default base is **`./rhaiteous`** relative to the process current working directory (not the workflow file’s directory).
+Default base is still **`./rhaiteous`** relative to cwd when `-b` is omitted.
 
-Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discovery). See [using-in-a-grok-project.md](./using-in-a-grok-project.md).
+### Seeds in this repository vs npm
+
+| Layer | Path |
+|-------|------|
+| Git | `examples/example-*` (versioned; `example-` prefix required for product seeds) |
+| npm package | `workflows/example-*` (`prepack` maps from `examples/`) |
+| Host project | `./workflows/…` (init copies seeds; custom packs unprefixed) |
+
+Compiled IR defaults to **`.grok/workflows/<name>.rhai`**. See [using-in-a-grok-project.md](./using-in-a-grok-project.md) and [examples/README.md](../examples/README.md).
 
 ---
 
@@ -25,608 +57,133 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`** (Grok project discover
 {
   "name": "office-shopping",
   "description": "What this pipeline does",
-  "phases": [
-    { "title": "Intake", "detail": "optional UI detail" }
-  ],
+  "payloadSchema": "shopping-payload.schema.json",
   "args": {
-    "requests_dir": { "required": true },
-    "company_name": { "default": "Acme Office" }
+    "requests_dir": true,
+    "company_name": "Acme Office"
   },
   "schemas": {
     "requests": "shopping-requests.schema.json"
   },
-  "steps": []
+  "prompts": {
+    "flow_common": "stations/common.md",
+    "intake": "stations/intake.md"
+  },
+  "stations": [
+    {
+      "name": "Intake",
+      "uiDescription": "collect requests",
+      "prompt": ["flow_common", "intake"],
+      "schemas": ["requests"],
+      "capability_mode": "read-only"
+    }
+  ]
 }
 ```
 
 | Field | Type | Required | Notes |
 |-------|------|----------|--------|
-| `name` | string | yes | Grok `meta.name`: lowercase letters, digits, hyphens; must match discovery conventions |
+| `name` | string | yes | Grok `meta.name`: lowercase letters, digits, hyphens |
 | `description` | string | yes | Non-empty human summary |
-| `phases` | array | no | Optional; should align with `phase` steps for the `/workflows` UI rail |
-| `args` | object | no | Declares invocation args (see below) |
-| `schemas` | object | no | Map of **binding name** → path **relative to `{base}/schemas/`** |
-| `steps` | array | yes | Non-empty ordered list of step objects |
+| `scriptType` | string | no | Omit or `"flow"` only. `"step"` is rejected |
+| `args` | object | no | Launch args (see below) |
+| `schemas` | object | no | Binding → path under `{base}/schemas/` (`$ref` inlined at compile time) |
+| `prompts` | object | no | Binding → path under `{base}/prompts/`; station `prompt` lists binding names |
+| `payloadSchema` | string | no | Path under `{base}/schemas/` for `flow.payload`; inlined into host `output_schema` |
+| `stations` | array | yes | Non-empty ordered station objects |
+| `steps` | — | no | **Rejected** (removed) |
+| `phases` | — | no | **Rejected** — derived from `stations` |
+
+### `stations[]`
+
+| Field | Type | Required | Notes |
+|-------|------|----------|--------|
+| `name` | string | yes | Rhai function name and phase title (identifier; keyword-guarded) |
+| `prompt` | string[] | yes | When top-level **`prompts`** is set: ordered **binding names**. When omitted: ordered **file paths** under `{base}/prompts/` |
+| `schemas` | string[] | no | Top-level schema bindings; embedded under **Additional Schemas** (guidance only) |
+| `uiDescription` | string | no | Phase rail subtitle → Grok `meta.phases[].detail` |
+| `label` | string | no | Agent label (default: `name`) |
+| `capability_mode` | string | no | Default `read-only` when omitted |
+| `agent_type` | string | no | Optional Grok agent type |
+
+Compiler emits: `meta.phases` from stations (`title` = `name`, `detail` = `uiDescription` when set), `let flow = #{ stations, log, current, next, msg, state, payload }`, one `fn <name>(flow[, workflow_args_json])` per station, then:
+
+```rhai
+flow.next = flow.stations[0];
+while flow.next != () {
+    flow = Fn(flow.next).call(flow /*, workflow_args_json */);
+}
+```
+
+Domain routing (`flow.next`, `flow.msg`, `flow.state`, `flow.payload`) is **agent-owned** via prompts.
+
+### Top-level `prompts`
+
+```json
+"prompts": {
+  "flow_common": "stations/common.md",
+  "intake": "stations/intake.md"
+},
+"stations": [
+  { "name": "Intake", "prompt": ["flow_common", "intake"] }
+]
+```
+
+When the workflow declares **`args`**, each station also receives a **Workflow args (JSON)** block.
+
+### Schema `$ref` inlining
+
+Applied when loading top-level `schemas` and **`payloadSchema`**. External file, file+pointer, and in-document `$ref` are supported. Network URLs, circular `$ref`, and `$ref` with siblings fail closed.
+
+### `payloadSchema`
+
+Optional path relative to `{base}/schemas/`. Becomes host-checked structure for **`flow.payload`** inside `make_flow_schema()`.
 
 ### `name` rules
 
-- Pattern (approximately): lowercase start; letters, digits, hyphens; hyphenated multi-char names must end with letter or digit.
-- Example: `office-shopping`
-- Becomes both `meta.name` and the default output file stem: `<name>.rhai`
+- Lowercase start; letters, digits, hyphens; becomes `meta.name` and default output stem `<name>.rhai`.
 
 ### Identifiers and Rhai keywords
 
-Args, schema binding names, `as` / `path` / loop locals, `$ref` targets, and similar fields become **Rhai identifiers**. They must not be Rhai **active or reserved keywords** (`switch`, `for`, `match`, `let`, `type_of`, …).
-
-If any such name is reserved, **compile fails** after collecting **all** violations. The error lists each keyword, its origin label (e.g. `agent.as`, `args field`), and points at the keyword list shipped with the package:
-
-```text
-src/data/rhai-keywords.txt
-```
-
-(Sources: [Rhai keywords](https://rhai.rs/book/language/keywords.html), [appendix list](https://rhai.rs/book/appendix/keywords.html).)
-
-Prompt and log **string** contents may contain keyword words; those are string literals, not identifiers.
-
-### `phases[]`
-
-| Field | Type | Required |
-|-------|------|----------|
-| `title` | string | yes |
-| `detail` | string | no |
+Args, schema bindings, station names, etc. must not be Rhai reserved keywords. Violations are collected and reported (see `src/data/rhai-keywords.txt`).
 
 ---
 
 ## `args`
 
-Each key is an **argument name** and becomes a **Rhai local** of the same name (must be a Rhai-friendly identifier: `[A-Za-z_][A-Za-z0-9_]*`).
+Each key becomes a Rhai local. The value **immediately after the key** is the default when the launch arg is missing. Nested `{ "default": … }` is rejected.
 
-### Forms
+| Form | Meaning |
+|------|---------|
+| `"out_dir": "path/to/out"` | Default value |
+| `"requests_dir": true` or `{ "required": true }` | Required; pause if missing |
+| `"hint": {}` | Optional; unit when missing |
 
-**Required, no default** (pause if missing):
+At runtime: `/workflow office-shopping {"requests_dir":"..."}`.
 
-```json
-"requests_dir": { "required": true }
-```
+---
 
-Shorthand (same meaning):
+## Prompt files
 
-```json
-"requests_dir": true
-```
+Under `{base}/prompts/` (convention: **Markdown** `.md`). Loaded, banner-prefixed, `{{templates}}` expanded (typically `{{args.field}}` for flow).
 
-**Optional with default:**
+---
 
-```json
-"company_name": { "default": "Acme Office" }
-```
-
-**Optional without default** (local may be unit `()`):
-
-```json
-"hint": {}
-```
-
-### Generated Rhai (conceptual)
+## Emitted IR (conceptual)
 
 ```rhai
-let requests_dir = if args == () { () } else { args.requests_dir };
-if requests_dir == () { pause("verification", "Pass args.requests_dir."); }
-
-let company_name = if args == () || args.company_name == () { "Acme Office" } else { args.company_name };
-```
-
-At runtime Grok still passes `args` into the script (e.g. `/workflow office-shopping {"requests_dir":"..."}`).
-
----
-
-## `schemas` (multiple external JSON Schemas)
-
-```json
-"schemas": {
-  "requests": "shopping-requests.schema.json",
-  "items": "shopping-items.schema.json",
-  "audit": "shopping-audit.schema.json",
-  "vendor_pick": "shopping-vendor-pick.schema.json",
-  "purchase_one": "shopping-purchase-one.schema.json"
+let meta = #{ name: "...", description: "...", phases: [ ... ] };
+// schema locals…
+// args locals…
+let flow = #{ stations: [...], log: [], current: (), next: (), msg: (), state: #{}, payload: () };
+fn make_flow_schema() { /* envelope + payload */ }
+fn Intake(flow, workflow_args_json) { /* agent → full flow */ }
+// …
+flow.next = flow.stations[0];
+while flow.next != () {
+    flow = Fn(flow.next).call(flow, workflow_args_json);
 }
+complete(#{ flow: flow, flow_json: json_encode(flow) });
 ```
 
-| Rule | Detail |
-|------|--------|
-| Binding name | Rhai identifier; becomes `let <name>_schema = #{...};` |
-| Path | Relative to `{base}/schemas/`; must be a JSON **object** root |
-| Count | Any number of entries (including zero) |
-| Authoring | Keep **standard JSON Schema** syntax in those files |
-| Failure | Missing or unreadable schema files fail the compile |
-
-### Referencing on a step
-
-Use the **binding name**, not the path:
-
-```json
-"output_schema": "requests"
-```
-
-### Inline schema (discouraged)
-
-`output_schema` may also be a raw JSON object embedded in the workflow file. Prefer external files so schemas stay shareable and toolable.
-
----
-
-## Prompt files and templates
-
-### Step `prompt` (agent / parallel)
-
-`prompt` is a **non-empty array of source file names** under `{base}/prompts/`.  
-(URLs may be supported later; v1 is local files only.)
-
-At compile time each file is loaded (failure aborts), then concatenated. **Each** file is prefaced with:
-
-```text
-<newline>===== [<file name>] =====<newline>
-```
-
-followed by the file body. The resulting text may still contain `{{templates}}`, which are expanded into Rhai string-building statements.
-
-Example:
-
-```json
-"prompt": ["shopping-inventory.txt"]
-```
-
-```json
-"prompt": ["shared-preamble.txt", "shopping-inventory.txt"]
-```
-
-Missing or unreadable files **fail the compile**.
-
-### `log.message`
-
-`log.message` remains an inline **string** or **array of strings** (arrays joined with newlines). It is **not** loaded from `prompts/`.
-
-### Interpolation (in prompt files and log messages)
-
-| Token | Meaning |
-|-------|---------|
-| `{{args.field}}` | Arg local declared under `args` |
-| `{{item}}` or `{{item_as}}` | Current element in a `parallel` loop |
-| `{{index}}` or `{{index_as}}` | Loop index (number → `.to_string()` in Rhai) |
-| `{{binding}}` | Prior step binding (`as` names, `collect` targets, etc.) |
-| `{{binding.field}}` | Property chain on a known binding |
-
-Unknown roots fail at **compile** time.
-
-Example prompt file body (`shopping-inventory.txt`):
-
-```text
-Company: {{args.company_name}}
-Request: {{req}}
-Index: {{i}}
-```
-
----
-
-## Steps
-
-Every step is an object with string **`op`**. Unknown `op` values fail closed.
-
-### `phase`
-
-```json
-{ "op": "phase", "title": "Inventory" }
-```
-
-| Field | Required |
-|-------|----------|
-| `title` | yes |
-
-Emits: `phase("Inventory");`
-
----
-
-### `log`
-
-```json
-{ "op": "log", "message": "Intake complete for {{args.company_name}}" }
-```
-
-| Field | Required |
-|-------|----------|
-| `message` | yes (string or string[]) |
-
----
-
-### `agent`
-
-Single subagent invocation.
-
-```json
-{
-  "op": "agent",
-  "as": "intake",
-  "label": "intake",
-  "agent_type": "stickler",
-  "capability_mode": "read-only",
-  "output_schema": "requests",
-  "prompt": ["shopping-intake.txt"]
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `as` | yes | Result binding name |
-| `prompt` | yes | Array of file names under `{base}/prompts/` |
-| `label` | no | Static job label |
-| `agent_type` | no | Grok agent type (e.g. custom `analyst`) |
-| `capability_mode` | no | `read-only` \| `read-write` \| `execute` \| `all` |
-| `output_schema` | no | Schema binding name or inline object |
-
-Emits roughly:
-
-```rhai
-let p = "";
-p += "...";
-let intake = agent(p, #{
-  prompt: p,
-  label: "intake",
-  agent_type: "stickler",
-  capability_mode: "read-only",
-  output_schema: requests_schema,
-});
-```
-
----
-
-### `parallel`
-
-Fan-out: one job per element of an array binding.
-
-```json
-{
-  "op": "parallel",
-  "as": "inventory_results",
-  "over": "requests",
-  "item_as": "req",
-  "index_as": "i",
-  "label_prefix": "inventory",
-  "agent_type": "analyst",
-  "capability_mode": "read-only",
-  "output_schema": "items",
-  "prompt": ["shopping-inventory.txt"]
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `as` | yes | Binding for `parallel(...)` results array |
-| `over` | yes | Existing array binding to iterate |
-| `prompt` | yes | Array of file names under `{base}/prompts/` (per-item `{{templates}}` still expand) |
-| `item_as` | no | Default `item` |
-| `index_as` | no | Default `index` |
-| `label_prefix` | no | Default = `as`; labels become `prefix:0`, `prefix:1`, … |
-| `agent_type` | no | |
-| `capability_mode` | no | |
-| `output_schema` | no | |
-
-`over` must already be a **known binding** (from `bind`, `collect`, etc.).
-
----
-
-### `collect`
-
-Merge nested arrays from parallel agent outputs.
-
-```json
-{
-  "op": "collect",
-  "as": "candidates",
-  "from": "analysis_results",
-  "field": "candidates"
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `as` | yes | New array binding |
-| `from` | yes | Parallel results binding |
-| `field` | yes | Field under each `r.output` |
-
-Skips failed / unit slots: requires `r != () && r.success && r.output.<field> != ()`.
-
----
-
-### `zip_filter`
-
-Pair `left[i]` with parallel verdict `right[i]`; keep left items when the verdict is successful and `output.real == true` with non-empty `output.evidence` (array length &gt; 0). Example schemas treat `evidence` as an array of `{ "source", "quote" }` objects.
-
-```json
-{
-  "op": "zip_filter",
-  "as": "survivors",
-  "dropped_as": "dropped",
-  "left": "candidates",
-  "right": "verdict_results"
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `as` | yes | Survivors array |
-| `left` | yes | Candidate array (same length order as jobs) |
-| `right` | yes | Parallel verdict results |
-| `dropped_as` | no | If set, pushes `cand.id` for rejected items |
-
-Assumes agents return objects with `id` when using `dropped_as`.
-
----
-
-### `bind`
-
-Copy one field from an agent result’s `output` into a new local.
-
-```json
-{
-  "op": "bind",
-  "as": "files",
-  "from": "intake",
-  "field": "files"
-}
-```
-
-Emits: `let files = intake.output.files;`
-
----
-
-### `set`
-
-Assign a value to a binding (introduce or reassign). Works in sequential flow and inside `then` / `else_if` / `else`.
-
-```json
-{ "op": "set", "as": "cycle_status" }
-```
-
-```json
-{ "op": "set", "as": "cycle_status", "value": "complete" }
-```
-
-```json
-{
-  "op": "set",
-  "as": "final_report",
-  "value": {
-    "summary": "done",
-    "status": { "$ref": "cycle_status" },
-    "items": { "$ref": "survivors" }
-  }
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `as` | yes | Binding name (must not collide with a workflow **arg** name) |
-| `value` | no | JSON-compatible tree with optional `{ "$ref": "binding" }` nodes (same as `complete.value`). **Omitted → Rhai unit `()`** |
-
-**Emission:**
-
-- First introduction of `as`: `let as = <valueExpr>;` (or `let as = ();` when `value` omitted)
-- Later `set` to the same name: `as = <valueExpr>;`
-- If `set` appears inside any arm of `if` / `if_empty` / `if_failed`, the compiler **hoists** `let as = ();` before that branch construct so assignments in arms stay in outer scope
-
-Use `set` for author-defined locals; use `bind` to extract agent output fields.
-
----
-
-### `if`
-
-Structured multi-way branch with a **closed** set of condition kinds (no free-form Rhai expressions).
-
-```json
-{
-  "op": "if",
-  "when": { "kind": "failed", "path": "intake" },
-  "then": [
-    { "op": "complete", "value": { "summary": "intake failed", "transactions": [] } }
-  ],
-  "else_if": [
-    {
-      "when": { "kind": "empty", "path": "requests" },
-      "then": [
-        { "op": "complete", "value": { "summary": "no requests", "transactions": [] } }
-      ]
-    }
-  ],
-  "else": [
-    { "op": "log", "message": "continuing pipeline" }
-  ]
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `when` | yes | `{ "kind", "path" }` — see kinds below |
-| `then` | yes | Non-empty step array |
-| `else_if` | no | Non-empty array of `{ when, then }` when present |
-| `else` | no | Non-empty step array when present |
-
-**`when.kind` values:**
-
-| `kind` | Emitted Rhai condition |
-|--------|------------------------|
-| `empty` | `path.len() == 0` |
-| `nonempty` | `path.len() > 0` |
-| `failed` | `path == () \|\| !path.success` |
-| `succeeded` | `path != () && path.success` |
-
-`path` must be a **known binding**. Unknown kinds fail at compile time.
-
-Emits:
-
-```rhai
-if <cond0> {
-  // then
-} else if <cond1> {
-  // else_if[0].then
-} else {
-  // else
-}
-```
-
----
-
-### `if_empty`
-
-If `path.len() == 0`, run nested `then` steps (usually `complete`). Optional `else` when the array is nonempty. Sugar for `if` with `kind: "empty"`.
-
-```json
-{
-  "op": "if_empty",
-  "path": "candidates",
-  "then": [
-    { "op": "complete", "value": { "summary": "No candidates.", "issues": [] } }
-  ],
-  "else": [
-    { "op": "log", "message": "have candidates" }
-  ]
-}
-```
-
-| Field | Required |
-|-------|----------|
-| `path` | yes (array binding) |
-| `then` | yes (non-empty step array) |
-| `else` | no (non-empty step array when present) |
-
----
-
-### `if_failed`
-
-If result is unit or `success` is false, run `then`. Optional `else` when the agent succeeded. Sugar for `if` with `kind: "failed"`.
-
-```json
-{
-  "op": "if_failed",
-  "path": "intake",
-  "then": [
-    { "op": "complete", "value": { "summary": "intake failed", "issues": [] } }
-  ],
-  "else": [
-    { "op": "log", "message": "intake ok" }
-  ]
-}
-```
-
-| Field | Required |
-|-------|----------|
-| `path` | yes (agent result binding) |
-| `then` | yes (non-empty step array) |
-| `else` | no (non-empty step array when present) |
-
----
-
-### `complete`
-
-End the workflow successfully with a value.
-
-```json
-{
-  "op": "complete",
-  "value": {
-    "summary": "challenge complete",
-    "issues": { "$ref": "survivors" },
-    "dropped": { "$ref": "dropped" }
-  }
-}
-```
-
-| Field | Required |
-|-------|----------|
-| `value` | yes |
-
-#### `$ref` nodes
-
-Anywhere in the `value` tree, an object of the form:
-
-```json
-{ "$ref": "bindingName" }
-```
-
-emits a bare Rhai identifier for that known binding (not a JSON string). Nested maps/arrays are supported.
-
-Static scalars/objects/arrays are emitted as Rhai literals via the JSON→Rhai converter.
-
----
-
-### `complete_from`
-
-```json
-{
-  "op": "complete_from",
-  "from": "result",
-  "pass_output": true,
-  "extra": { "tag": "v1" }
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `from` | yes | Agent result binding |
-| `extra` | no | Static fields merged into the complete map |
-| `pass_output` | no | If true, adds `output: <from>.output` |
-
-If neither `extra` nor `pass_output` adds fields, emits `complete(<from>.output);`.
-
----
-
-### `pause` / `await_user`
-
-```json
-{
-  "op": "pause",
-  "kind": "verification",
-  "message": "Provide args.requests_dir and resume."
-}
-```
-
-```json
-{
-  "op": "await_user",
-  "kind": "verification",
-  "message": "QA failed; inspect /workflows then resume."
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|--------|
-| `message` | yes | Shown to the user |
-| `kind` | no | Default `verification` |
-
-**Semantics** (Grok host): `pause` re-checks conditions on resume; `await_user` continues past the gate on resume. Prefer `await_user` for human-in-the-loop after failed QA; prefer `pause` for missing args that a resume cannot fix without new invocation data.
-
----
-
-## Binding model
-
-Steps introduce **known bindings** used by later steps and templates:
-
-| Introduced by | Binding |
-|---------------|---------|
-| `args` | Each arg name |
-| `agent` / `parallel` / `collect` / `zip_filter` / `bind` / `set` | `as` (and `dropped_as`) |
-| `schemas` | Not step bindings; schema names only for `output_schema` |
-
-Using an unknown `over` / `from` / `$ref` fails at compile time.
-
----
-
-## What is not in v1
-
-- Arbitrary Rhai snippets / `import` of other Rhai modules  
-- Free-form condition expressions (only closed `when.kind` values on `if`, plus `if_empty` / `if_failed` sugar)  
-- Field-level compares, boolean trees of multiple predicates, or custom operators in `when`  
-- General loops (`while`, free `for`) beyond fixed `parallel` / `collect` / `zip_filter` patterns  
-- Compiling *to* JSON Schema (schemas are inputs, not outputs)  
-- Validating agent outputs at compile time against schemas  
-- Nested workflows / calling other workflow files  
-
-Contributions that extend the dialect should remain **fail-closed** and documented here.
+See [office-shopping-example.md](./office-shopping-example.md) and [design.md](./design.md).

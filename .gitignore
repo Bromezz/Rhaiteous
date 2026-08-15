@@ -3,9 +3,22 @@ npm-debug.log*
 .DS_Store
 *.log
 
+# Local experimental Rhai / scratch (not for VC)
+experiments/
+
+# Option B: generated at prepack from examples/example-* (npm tarball only)
+# Also the host mount name if you use this repo as a Grok project — keep local.
+workflows/
+
 # Grok local state — re-include compiled workflow IR so it can stay under VC.
 # (Git cannot re-include files under a fully ignored parent directory, so
 # ignore contents of .grok/ rather than the directory entry itself.)
 .grok/*
 !.grok/workflows/
 !.grok/workflows/**
+
+# Compile products inside example packs (regenerate with the CLI)
+examples/**/workflow.rhai
+examples/**/workflow.md
+examples/**/output/**
+!examples/**/output/.gitkeep

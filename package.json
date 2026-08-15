@@ -2,7 +2,7 @@
   "name": "rhaiteous",
   "version": "0.3.1",
   "private": false,
-  "description": "Rhaiteous — compile JSON + JSON Schema workflow definitions into Grok Build Rhai scripts",
+  "description": "Rhaiteous — compile JSON station-flow workflows + JSON Schema into Grok Build Rhai scripts",
   "license": "MIT",
   "author": "Rob Kemmer <rob.kemmer@koriograf.com>",
   "type": "module",
@@ -22,18 +22,24 @@
   },
   "exports": {
     ".": "./src/compile-workflow.js",
-    "./json-to-rhai": "./src/json-to-rhai.js"
+    "./json-to-rhai": "./src/json-to-rhai.js",
+    "./schema-inline": "./src/schema-inline.js"
   },
   "files": [
     "bin/",
     "src/",
+    "workflows/",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
     "rhaiteous": "node ./bin/rhaiteous.js",
-    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js ./test/rhai-keywords.test.js",
-    "example:compile": "node ./bin/rhaiteous.js ./examples/rhaiteous/workflows/office-shopping.workflow.json -b ./examples/rhaiteous -o ./examples/out/office-shopping.rhai"
+    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js ./test/rhai-keywords.test.js ./test/schema-inline.test.js",
+    "prepack": "node ./scripts/map-examples-to-workflows.mjs",
+    "postpack": "node ./scripts/clean-workflows-map.mjs",
+    "map:workflows": "node ./scripts/map-examples-to-workflows.mjs",
+    "clean:workflows": "node ./scripts/clean-workflows-map.mjs",
+    "example:compile": "node ./bin/rhaiteous.js ./examples/example-office-shopping/workflow.json -b ./examples/example-office-shopping -o ./examples/example-office-shopping/workflow.rhai"
   },
   "keywords": [
     "rhaiteous",

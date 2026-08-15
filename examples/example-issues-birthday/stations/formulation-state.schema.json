@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rhaiteous.local/schemas/formulation-state.schema.json",
+  "title": "FormulationStationState",
+  "description": "Best-effort shape for flow.state.Formulation (not host-enforced beyond guidance in the station prompt).",
+  "type": "object",
+  "required": ["status", "itemsAdded"],
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Station outcome label, e.g. complete."
+    },
+    "itemsAdded": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of issues newly ADDED to flow.payload.items on this Formulation visit only (not revisions). Zero if none added."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional free-form notes."
+    }
+  }
+}

@@ -212,11 +212,10 @@ import compileMod from "./src/compile-workflow.js";
 const workflow = {
   name: "hello",
   description: "smoke",
-  steps: [
-    { op: "phase", title: "Main" },
+  stations: [
     {
-      op: "complete",
-      value: { summary: "ok" },
+      name: "Main",
+      prompt: ["hello.md"],
     },
   ],
 };

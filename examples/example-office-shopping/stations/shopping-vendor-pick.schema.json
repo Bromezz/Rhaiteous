@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rhaiteous.local/schemas/shopping-vendor-pick.schema.json",
-  "$comment": "Procurement station (per line): one vendor choice wrapped in picks[] so parallel results can be collect'ed.",
+  "$comment": "Procurement guidance: one vendor choice shape (picks[] or flattened picks on payload).",
   "title": "ShoppingVendorPickResult",
   "type": "object",
   "required": ["picks"],

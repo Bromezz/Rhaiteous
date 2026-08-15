@@ -11,6 +11,7 @@ import nodePath from "node:path";
 import jsonToRhaiMod from "./json-to-rhai.js";
 import templateMod from "./template.js";
 import rhaiKeywordsMod from "./rhai-keywords.js";
+import schemaInlineMod from "./schema-inline.js";
 
 //active compile context for keyword collection (set only during compileWorkflow)
 let activeKeywordCtx = null; //ctx with keywordViolations[]
@@ -157,6 +158,78 @@ function readJsonFile(filePath) {
 }
 
 /*
+ * @description resolve schemas root under an asset base
+ * Prefers {base}/schemas (legacy). Pack layout: schemas live under {base}
+ * (e.g. schema.json + stations/*.schema.json).
+ * @param baseDir - absolute asset base
+ * @returns absolute schemas directory
+ */
+function resolveSchemasDir(baseDir) {
+
+  //variables
+  let legacy = ""; //base/schemas
+
+  //legacy multi-workflow base
+  legacy = nodePath.join(baseDir, "schemas");
+
+  //use schemas/ when present
+  if (nodeFs.existsSync(legacy) && nodeFs.statSync(legacy).isDirectory()) {
+
+    //legacy root
+    return legacy;
+
+  //end legacy
+  }
+
+  //pack layout: asset base is the schemas boundary
+  return baseDir;
+
+//end resolveSchemasDir
+}
+
+/*
+ * @description resolve prompts root under an asset base
+ * Prefers {base}/prompts (legacy). Pack layout: {base}/stations/*.md
+ * @param baseDir - absolute asset base
+ * @returns absolute prompts directory
+ */
+function resolvePromptsDir(baseDir) {
+
+  //variables
+  let legacy = ""; //base/prompts
+  let stations = ""; //base/stations
+
+  //legacy
+  legacy = nodePath.join(baseDir, "prompts");
+
+  //use prompts/ when present
+  if (nodeFs.existsSync(legacy) && nodeFs.statSync(legacy).isDirectory()) {
+
+    //legacy root
+    return legacy;
+
+  //end legacy
+  }
+
+  //pack layout
+  stations = nodePath.join(baseDir, "stations");
+
+  //stations holds station prompts
+  if (nodeFs.existsSync(stations) && nodeFs.statSync(stations).isDirectory()) {
+
+    //pack prompts root
+    return stations;
+
+  //end stations
+  }
+
+  //default path (load will fail with a clear missing-file error)
+  return legacy;
+
+//end resolvePromptsDir
+}
+
+/*
  * @description resolve the asset base directory (contains schemas/ and prompts/)
  * @param options - compiler options that may include base
  * @returns absolute path to the base directory
@@ -229,8 +302,8 @@ function loadSchemas(schemas, baseDir) {
   //end missing-schemas branch
   }
 
-  //schemas live under base/schemas
-  schemasDir = nodePath.join(baseDir, "schemas");
+  //legacy {base}/schemas or pack {base}
+  schemasDir = resolveSchemasDir(baseDir);
 
   //stable key order
   keys = Object.keys(schemas).sort();
@@ -284,8 +357,24 @@ function loadSchemas(schemas, baseDir) {
     //end object guard
     }
 
-    //store loaded schema
-    loaded[key] = doc;
+    //inline $ref (external files + in-document pointers) at compile time
+    try {
+
+      //resolve under schemasDir
+      loaded[key] = schemaInlineMod.inlineParsedSchema(doc, abs, schemasDir);
+
+    } catch (err) {
+
+      //log and wrap with binding context
+      console.error("failed to inline $ref in schema '" + key + "' from " + abs, err);
+
+      //fail closed
+      throw new Error(
+        "failed to inline $ref in schema '" + key + "' from " + abs + ": " + err.message
+      );
+
+    //end inline
+    }
 
     //next binding
     i += 1;
@@ -320,13 +409,15 @@ function loadPromptFiles(promptFiles, baseDir) {
   if (!Array.isArray(promptFiles) || promptFiles.length === 0) {
 
     //bad shape
-    throw new Error("prompt must be a non-empty array of source file names under prompts/");
+    throw new Error(
+      "prompt must be a non-empty array of source file names under prompts/ or stations/"
+    );
 
   //end array guard
   }
 
-  //prompts live under base/prompts
-  promptsDir = nodePath.join(baseDir, "prompts");
+  //legacy {base}/prompts or pack {base}/stations
+  promptsDir = resolvePromptsDir(baseDir);
 
   //load each referenced file in order
   i = 0;
@@ -399,6 +490,590 @@ function loadPromptFiles(promptFiles, baseDir) {
 }
 
 /*
+ * @description normalize top-level workflow.prompts map (binding → path under prompts/)
+ * @param prompts - author map or undefined
+ * @returns map binding → relative path, or null when omitted
+ */
+function normalizePromptRegistry(prompts) {
+
+  //variables
+  let keys = null; //binding names
+  let i = 0; //index
+  let key = ""; //binding
+  let rel = ""; //path
+  let out = {}; //registry
+
+  //omit → legacy path arrays on stations / steps
+  if (prompts === undefined || prompts === null) {
+
+    //no registry
+    return null;
+
+  //end omit
+  }
+
+  //must be object map
+  if (typeof prompts !== "object" || Array.isArray(prompts)) {
+
+    //bad
+    throw new Error(
+      "workflow.prompts must be an object map of binding → path under prompts/"
+    );
+
+  //end type
+  }
+
+  //each binding
+  keys = Object.keys(prompts);
+  i = 0;
+
+  //walk
+  while (i < keys.length) {
+
+    //binding name
+    key = assertIdent(keys[i], "prompts binding");
+
+    //path value
+    rel = prompts[keys[i]];
+
+    //require non-empty string path
+    if (typeof rel !== "string" || rel.length === 0) {
+
+      //bad path
+      throw new Error("prompts." + key + " must be a non-empty path under prompts/");
+
+    //end path guard
+    }
+
+    //store
+    out[key] = rel;
+
+    //next
+    i += 1;
+
+  //end walk
+  }
+
+  //empty map is useless
+  if (Object.keys(out).length === 0) {
+
+    //fail closed
+    throw new Error("workflow.prompts must declare at least one binding when present");
+
+  //end empty
+  }
+
+  //registry
+  return out;
+
+//end normalizePromptRegistry
+}
+
+/*
+ * @description resolve station/step prompt entries to file paths under prompts/
+ * @param promptList - array of binding names (when registry set) or file paths (legacy)
+ * @param promptRegistry - binding → path map, or null for legacy paths
+ * @param origin - error label (e.g. stations[0].prompt)
+ * @returns ordered array of relative prompt file paths
+ */
+function resolvePromptList(promptList, promptRegistry, origin) {
+
+  //variables
+  let i = 0; //index
+  let entry = ""; //binding or path
+  let paths = []; //resolved paths
+  let label = ""; //error origin
+
+  //require non-empty array
+  if (!Array.isArray(promptList) || promptList.length === 0) {
+
+    //bad
+    throw new Error(
+      (origin || "prompt") +
+      " must be a non-empty array of prompt bindings or file names"
+    );
+
+  //end array
+  }
+
+  //legacy: no registry → each entry is a file path
+  if (promptRegistry === null || promptRegistry === undefined) {
+
+    //validate strings only; loadPromptFiles will open files
+    i = 0;
+
+    //walk
+    while (i < promptList.length) {
+
+      //entry
+      entry = promptList[i];
+
+      //string path
+      if (typeof entry !== "string" || entry.length === 0) {
+
+        //bad
+        throw new Error(
+          (origin || "prompt") + "[" + i + "] must be a non-empty prompt file path"
+        );
+
+      //end guard
+      }
+
+      //as-is path
+      paths.push(entry);
+
+      //next
+      i += 1;
+
+    //end walk
+    }
+
+    //paths
+    return paths;
+
+  //end legacy
+  }
+
+  //registry mode: each entry is a binding name
+  i = 0;
+
+  //walk
+  while (i < promptList.length) {
+
+    //binding
+    entry = promptList[i];
+    label = (origin || "prompt") + "[" + i + "]";
+
+    //string
+    if (typeof entry !== "string" || entry.length === 0) {
+
+      //bad
+      throw new Error(label + " must be a non-empty prompt binding name");
+
+    //end string
+    }
+
+    //identifier (keyword-safe)
+    entry = assertIdent(entry, label);
+
+    //must exist in registry
+    if (!promptRegistry[entry]) {
+
+      //unknown
+      throw new Error(
+        label + " '" + entry + "' was not declared in workflow.prompts"
+      );
+
+    //end missing
+    }
+
+    //resolved path
+    paths.push(promptRegistry[entry]);
+
+    //next
+    i += 1;
+
+  //end walk
+  }
+
+  //ordered file paths
+  return paths;
+
+//end resolvePromptList
+}
+
+/*
+ * @description format a workflow args value for the generated workflow.md table
+ * @param value - raw args entry (flat default, true required, {}, or { required: true })
+ * @returns short display string
+ */
+function formatArgDefaultForGuide(value) {
+
+  //required flag
+  if (value === true) {
+
+    //required, no default
+    return "*(required)*";
+
+  //end required true
+  }
+
+  //object forms
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+
+    //explicit required
+    if (value.required === true && value.default === undefined) {
+
+      //required
+      return "*(required)*";
+
+    //end required object
+    }
+
+    //optional empty
+    if (Object.keys(value).length === 0) {
+
+      //no default
+      return "*(optional, no default)*";
+
+    //end empty object
+    }
+
+  //end object branch
+  }
+
+  //scalar / array / map default — compact JSON
+  try {
+
+    //stable JSON for guide
+    return "`" + JSON.stringify(value) + "`";
+
+  } catch (err) {
+
+    //fallback
+    return String(value);
+
+  //end json
+  }
+
+//end formatArgDefaultForGuide
+}
+
+/*
+ * @description emit human-readable workflow.md (build product; same cycle as Rhai)
+ * @param workflow - workflow document object
+ * @returns markdown source
+ */
+function emitWorkflowMarkdown(workflow) {
+
+  //variables
+  let lines = []; //markdown lines
+  let name = ""; //workflow name
+  let desc = ""; //description
+  let args = null; //args map
+  let argKeys = null; //arg names
+  let ai = 0; //arg index
+  let argName = ""; //one arg
+  let stations = null; //station list
+  let si = 0; //station index
+  let st = null; //one station
+  let cap = ""; //capability_mode
+  let schemas = ""; //station schemas list
+  let promptNote = ""; //prompt binding hint
+
+  //name / description
+  name = typeof workflow.name === "string" ? workflow.name : "(unnamed)";
+  desc =
+    typeof workflow.description === "string" && workflow.description.length > 0
+      ? workflow.description
+      : "*(no description in workflow JSON)*";
+
+  //banner — analysis / onboarding only
+  lines.push("# " + name);
+  lines.push("");
+  lines.push("> **BUILD ARTIFACT** — generated by **rhaiteous** in the same compile cycle as the Rhai IR.");
+  lines.push("> Suitable for reading and onboarding only. **Do not edit** this file.");
+  lines.push("> Authoring surface: workflow JSON (+ schemas + prompts). Recompile after changes.");
+  lines.push("");
+
+  //purpose
+  lines.push("## Purpose");
+  lines.push("");
+  lines.push(desc);
+  lines.push("");
+
+  //compile
+  lines.push("## Compile (Rhaiteous)");
+  lines.push("");
+  lines.push("Rhaiteous **compiles only**; it does not execute the pipeline.");
+  lines.push("");
+  lines.push("```bash");
+  lines.push("# typical project compile → .grok/workflows/" + name + ".rhai");
+  lines.push("# and workflow.md next to the authoring workflow JSON (always named workflow.md)");
+  lines.push("npx rhaiteous ./path/to/workflow.json -b ./path/to/asset-base");
+  lines.push("");
+  lines.push("# pack-style output (both artifacts in the pack directory):");
+  lines.push("# npx rhaiteous ./workflows/" + name + "/workflow.json -b ./workflows/" + name + " \\");
+  lines.push("#   -o ./workflows/" + name + "/workflow.rhai");
+  lines.push("```");
+  lines.push("");
+
+  //run
+  lines.push("## Run (Grok — no recompile)");
+  lines.push("");
+  lines.push("Place or compile IR to `.grok/workflows/" + name + ".rhai` (or `~/.grok/workflows/`), then:");
+  lines.push("");
+  lines.push("```text");
+  lines.push("/workflow " + name + " { /* args — see table below */ }");
+  lines.push("```");
+  lines.push("");
+
+  //args
+  lines.push("### Args");
+  lines.push("");
+  args = workflow.args && typeof workflow.args === "object" ? workflow.args : null;
+
+  //no args
+  if (!args || Object.keys(args).length === 0) {
+
+    //none declared
+    lines.push("This workflow declares no `args`. Launch with `{}` or omit the JSON object per Grok.");
+    lines.push("");
+
+  } else {
+
+    //table
+    lines.push("| Arg | Default / requirement |");
+    lines.push("|-----|------------------------|");
+    argKeys = Object.keys(args);
+    ai = 0;
+
+    //each arg
+    while (ai < argKeys.length) {
+
+      //row
+      argName = argKeys[ai];
+      lines.push(
+        "| `" +
+          argName +
+          "` | " +
+          formatArgDefaultForGuide(args[argName]) +
+          " |"
+      );
+
+      //next
+      ai += 1;
+
+    //end args walk
+    }
+
+    lines.push("");
+    lines.push("Args are **flat**: the value after the key in workflow JSON is the default when the launch arg is missing.");
+    lines.push("");
+
+  //end args branch
+  }
+
+  //stations
+  lines.push("## Stations and participation");
+  lines.push("");
+  stations = Array.isArray(workflow.stations) ? workflow.stations : [];
+
+  //empty
+  if (stations.length === 0) {
+
+    //none
+    lines.push("*(no stations declared)*");
+    lines.push("");
+
+  } else {
+
+    //order note
+    lines.push(
+      "Stations run in `flow.stations` order. Default routing: set `flow.next` to the next name in the list after `flow.current`; last station → `null`."
+    );
+    lines.push("");
+    lines.push("| # | Station | Capability | Role (`uiDescription`) | Schemas (guidance) | Prompts |");
+    lines.push("|---|---------|------------|--------------------------|--------------------|---------|");
+    si = 0;
+
+    //each station
+    while (si < stations.length) {
+
+      //station object
+      st = stations[si] && typeof stations[si] === "object" ? stations[si] : {};
+      cap =
+        typeof st.capability_mode === "string" && st.capability_mode.length > 0
+          ? st.capability_mode
+          : "*(default)*";
+      schemas =
+        Array.isArray(st.schemas) && st.schemas.length > 0
+          ? st.schemas.map(function quote(s) {
+
+              //backtick binding
+              return "`" + s + "`";
+
+            //end map
+            }).join(", ")
+          : "—";
+      promptNote =
+        Array.isArray(st.prompt) && st.prompt.length > 0
+          ? st.prompt.map(function quoteP(p) {
+
+              //binding or path
+              return "`" + p + "`";
+
+            //end map
+            }).join(" + ")
+          : "—";
+
+      //row
+      lines.push(
+        "| " +
+          String(si + 1) +
+          " | **" +
+          (typeof st.name === "string" ? st.name : "?") +
+          "** | `" +
+          cap +
+          "` | " +
+          (typeof st.uiDescription === "string" && st.uiDescription.length > 0
+            ? st.uiDescription
+            : "—") +
+          " | " +
+          schemas +
+          " | " +
+          promptNote +
+          " |"
+      );
+
+      //next
+      si += 1;
+
+    //end stations walk
+    }
+
+    lines.push("");
+
+    //sequence line
+    lines.push("**Sequence:** " + stations.map(function seqName(s) {
+
+      //name or ?
+      return s && typeof s.name === "string" ? s.name : "?";
+
+    //end map
+    }).join(" → ") + ".");
+    lines.push("");
+
+  //end stations branch
+  }
+
+  //payload / schemas summary
+  lines.push("## Schemas");
+  lines.push("");
+
+  //payload
+  if (typeof workflow.payloadSchema === "string" && workflow.payloadSchema.length > 0) {
+
+    //payload file
+    lines.push("- **Payload (host envelope):** `" + workflow.payloadSchema + "`");
+
+  } else {
+
+    //none
+    lines.push("- **Payload:** *(none declared — nullable object default)*");
+
+  //end payload
+  }
+
+  //top-level schema bindings
+  if (workflow.schemas && typeof workflow.schemas === "object") {
+
+    //list bindings
+    Object.keys(workflow.schemas).forEach(function listSchema(binding) {
+
+      //bullet
+      lines.push(
+        "- **`" +
+          binding +
+          "`:** `" +
+          workflow.schemas[binding] +
+          "`"
+      );
+
+    //end forEach
+    });
+
+  //end schemas map
+  }
+
+  lines.push("");
+
+  //footer
+  lines.push("## Notes");
+  lines.push("");
+  lines.push("- Generated **`.rhai`** and **`workflow.md`** are both build artifacts; do not hand-edit.");
+  lines.push("- Grok discovers saved workflows only under `.grok/workflows/*.rhai` or `~/.grok/workflows/*.rhai`.");
+  lines.push("- This file is always named **`workflow.md`** (one workflow pack per directory).");
+  lines.push("");
+
+  //join
+  return lines.join("\n");
+
+//end emitWorkflowMarkdown
+}
+
+/*
+ * @description resolve path(s) for workflow.md written in the same cycle as the Rhai
+ * @param absIn - absolute workflow JSON path
+ * @param outPath - absolute .rhai output path
+ * @returns array of absolute paths (unique) for workflow.md
+ */
+function resolveWorkflowMdPaths(absIn, outPath) {
+
+  //variables
+  let paths = []; //result
+  let seen = {}; //dedupe
+  let candidate = ""; //one path
+  let inBase = ""; //input basename
+  let outBase = ""; //output basename
+
+  //helpers push unique
+  function pushPath(p) {
+
+    //skip empty
+    if (typeof p !== "string" || p.length === 0) {
+
+      //nothing
+      return;
+
+    //end empty
+    }
+
+    //dedupe
+    if (seen[p]) {
+
+      //already
+      return;
+
+    //end seen
+    }
+
+    //record
+    seen[p] = true;
+    paths.push(p);
+
+  //end pushPath
+  }
+
+  inBase = nodePath.basename(absIn);
+  outBase = nodePath.basename(outPath);
+
+  //pack-style IR: always workflow.md beside workflow.rhai
+  if (outBase === "workflow.rhai") {
+
+    //beside IR
+    pushPath(nodePath.join(nodePath.dirname(outPath), "workflow.md"));
+
+  //end pack out
+  }
+
+  //pack-style or flat authoring dir: always workflow.md beside the JSON
+  // (one workflow authoring file per directory recommended)
+  pushPath(nodePath.join(nodePath.dirname(absIn), "workflow.md"));
+
+  //do not write workflow.md into multi-workflow .grok/workflows when IR is <name>.rhai
+  // (only the authoring-dir / workflow.rhai cases above)
+
+  //silence unused when only authoring path
+  void candidate;
+
+  //paths to write
+  return paths;
+
+//end resolveWorkflowMdPaths
+}
+
+/*
  * @description emit the pure-literal meta header required by Grok Build
  * @param workflow - workflow document
  * @returns Rhai source for let meta = #{...};
@@ -468,13 +1143,25 @@ function emitMeta(workflow) {
         title: phaseIn.title, //phase title
       };
 
-      //optional detail
-      if (typeof phaseIn.detail === "string") {
+      //optional UI description (author field uiDescription → Grok meta detail)
+      if (phaseIn.detail !== undefined) {
 
-        //include detail
-        phaseOut.detail = phaseIn.detail;
+        //old name rejected
+        throw new Error(
+          "phases[" + i + "].detail is not supported; use uiDescription " +
+          "(emitted as meta.phases[].detail for Grok)"
+        );
 
-      //end detail branch
+      //end old name guard
+      }
+
+      //optional uiDescription
+      if (typeof phaseIn.uiDescription === "string") {
+
+        //Grok phase rail subtitle
+        phaseOut.detail = phaseIn.uiDescription;
+
+      //end uiDescription branch
       }
 
       //store phase
@@ -604,7 +1291,7 @@ function emitSchemaLocals(loadedSchemas) {
   }
 
   //section banner
-  lines.push("//json schemas loaded from disk (generated; do not hand-edit)");
+  lines.push("// json schemas embedded from disk (part of this build artifact; do not edit)");
 
   //emit each schema binding
   i = 0;
@@ -645,9 +1332,14 @@ function emitArgsPreamble(argsDef) {
   let keys = null; //arg names
   let i = 0; //loop index
   let key = ""; //current arg
-  let def = null; //arg definition
+  let def = null; //raw author value for this arg
   let lines = []; //rhai lines
   let defaultLit = ""; //default literal
+  let isPlainObject = false; //def is non-array object
+  let onlyKeys = null; //object keys when inspecting forms
+  let isRequired = false; //pause when missing
+  let isOptionalUnit = false; //bind unit when missing, no default
+  let hasLegacyDefault = false; //old { "default": ... } wrapper
 
   //no args section
   if (!argsDef || typeof argsDef !== "object" || Array.isArray(argsDef)) {
@@ -676,34 +1368,46 @@ function emitArgsPreamble(argsDef) {
     //arg field name doubles as Rhai local
     key = assertIdent(keys[i], "args field");
 
-    //definition object
+    //value immediately after the key (default, true, {required:true}, or {})
     def = argsDef[keys[i]];
-
-    //normalize shorthand: true means required
-    if (def === true) {
-
-      //required without default
-      def = {
-        required: true, //must be present
-      };
-
-    //end true shorthand
-    }
-
-    //require object definition
-    if (!def || typeof def !== "object" || Array.isArray(def)) {
-
-      //bad definition
-      throw new Error("args." + key + " must be an object or true");
-
-    //end def guard
-    }
 
     //mark known for templates
     argsLocals[key] = true;
 
+    //classify author form
+    isPlainObject =
+      def !== null &&
+      typeof def === "object" &&
+      !Array.isArray(def);
+    onlyKeys = isPlainObject ? Object.keys(def) : null;
+    isRequired =
+      def === true ||
+      (isPlainObject &&
+        def.required === true &&
+        onlyKeys.length === 1 &&
+        onlyKeys[0] === "required");
+    isOptionalUnit = isPlainObject && onlyKeys.length === 0;
+    hasLegacyDefault =
+      isPlainObject &&
+      Object.prototype.hasOwnProperty.call(def, "default") &&
+      onlyKeys.length === 1 &&
+      onlyKeys[0] === "default";
+
+    //legacy nested default clutters authoring — value goes on the key
+    if (hasLegacyDefault) {
+
+      //point authors at the flat form
+      throw new Error(
+        "args." + key +
+        ": put the value directly after the key (e.g. \"" + key +
+        "\": <value>) instead of { \"default\": ... }"
+      );
+
+    //end legacy guard
+    }
+
     //required without default → pause when missing
-    if (def.required && def.default === undefined) {
+    if (isRequired) {
 
       //bind from args or unit
       lines.push("let " + key + " = if args == () { () } else { args." + key + " };");
@@ -715,10 +1419,15 @@ function emitArgsPreamble(argsDef) {
         "); }"
       );
 
-    } else if (def.default !== undefined) {
+    } else if (isOptionalUnit) {
 
-      //emit default literal
-      defaultLit = jsonToRhaiMod.jsonToRhai(def.default, "");
+      //optional without default → unit when missing
+      lines.push("let " + key + " = if args == () { () } else { args." + key + " };");
+
+    } else {
+
+      //value after the key is the default (string, number, array, object, …)
+      defaultLit = jsonToRhaiMod.jsonToRhai(def, "");
 
       //bind with default when missing
       lines.push(
@@ -726,11 +1435,6 @@ function emitArgsPreamble(argsDef) {
         defaultLit +
         " } else { args." + key + " };"
       );
-
-    } else {
-
-      //optional without default → unit when missing
-      lines.push("let " + key + " = if args == () { () } else { args." + key + " };");
 
     //end required/default branches
     }
@@ -751,899 +1455,934 @@ function emitArgsPreamble(argsDef) {
 }
 
 /*
- * @description resolve output_schema field to a Rhai expression (binding_schema or inline)
- * @param spec - string binding name or object schema
- * @param loadedSchemas - loaded schema bindings
- * @returns Rhai expression for output_schema
+ * @description validate and normalize stations[] for flow scripts
+ * @param stations - raw stations array
+ * @returns normalized station objects { name, prompt, uiDescription?, label?, … }
  */
-function resolveOutputSchemaExpr(spec, loadedSchemas) {
+function normalizeStations(stations) {
 
   //variables
-  let binding = ""; //schema binding name
+  let i = 0; //index
+  let raw = null; //input entry
+  let name = ""; //station name / fn name
+  let out = []; //normalized list
+  let seen = {}; //duplicate name guard
+  let entry = null; //normalized entry
 
-  //omitted schema
-  if (spec === undefined || spec === null) {
+  //require non-empty array
+  if (!Array.isArray(stations) || stations.length === 0) {
 
-    //no expression
-    return null;
+    //missing stations
+    throw new Error("workflow.stations must be a non-empty array");
 
-  //end omitted branch
+  //end array guard
   }
 
-  //string → named binding loaded from disk
-  if (typeof spec === "string") {
-
-    //binding name
-    binding = assertIdent(spec, "output_schema binding");
-
-    //must be loaded
-    if (!loadedSchemas[binding]) {
-
-      //unknown schema
-      throw new Error("output_schema '" + binding + "' was not declared in workflow.schemas");
-
-    //end known guard
-    }
-
-    //compiler emits let <binding>_schema = ...
-    return binding + "_schema";
-
-  //end string branch
-  }
-
-  //inline object schema (discouraged but supported)
-  if (typeof spec === "object" && !Array.isArray(spec)) {
-
-    //emit inline map
-    return jsonToRhaiMod.jsonToRhai(spec, "    ");
-
-  //end inline branch
-  }
-
-  //bad type
-  throw new Error("output_schema must be a schema binding name or a JSON object");
-
-//end resolveOutputSchemaExpr
-}
-
-/*
- * @description emit agent option map fields shared by agent and parallel jobs
- * @param step - step object
- * @param promptVar - rhai variable holding the prompt string
- * @param loadedSchemas - schema bindings
- * @param indent - line indent
- * @returns Rhai map body fields (without outer #{})
- */
-function emitAgentOptsFields(step, promptVar, loadedSchemas, indent) {
-
-  //variables
-  let lines = []; //field lines
-  let schemaExpr = null; //output_schema expression
-
-  //prompt is required
-  lines.push(indent + "prompt: " + promptVar + ",");
-
-  //optional label
-  if (typeof step.label === "string") {
-
-    //static label string
-    lines.push(indent + "label: " + jsonToRhaiMod.emitRhaiString(step.label) + ",");
-
-  //end label branch
-  }
-
-  //optional agent_type
-  if (typeof step.agent_type === "string") {
-
-    //agent type name
-    lines.push(indent + "agent_type: " + jsonToRhaiMod.emitRhaiString(step.agent_type) + ",");
-
-  //end agent_type branch
-  }
-
-  //optional capability_mode
-  if (typeof step.capability_mode === "string") {
-
-    //capability mode
-    lines.push(indent + "capability_mode: " + jsonToRhaiMod.emitRhaiString(step.capability_mode) + ",");
-
-  //end capability branch
-  }
-
-  //optional output_schema
-  schemaExpr = resolveOutputSchemaExpr(step.output_schema, loadedSchemas);
-
-  //include schema when present
-  if (schemaExpr !== null) {
-
-    //schema expression
-    lines.push(indent + "output_schema: " + schemaExpr + ",");
-
-  //end schema branch
-  }
-
-  //joined fields
-  return lines.join("\n");
-
-//end emitAgentOptsFields
-}
-
-/*
- * @description emit a single agent step
- * @param step - agent step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitAgentStep(step, ctx) {
-
-  //variables
-  let asName = ""; //result binding
-  let lines = []; //source lines
-  let scope = null; //template scope
-  let promptBuild = ""; //prompt build block
-  let fields = ""; //opts fields
-
-  //require result binding
-  asName = assertIdent(step.as, "agent.as");
-
-  //template scope from context
-  scope = {
-    argsLocals: ctx.argsLocals, //args
-    knownVars: ctx.knownVars, //prior bindings
-    itemAs: null, //no loop item
-    indexAs: null, //no loop index
-  };
-
-  //load prompt source files from {base}/prompts, then expand {{templates}}
-  promptBuild = templateMod.emitPromptBuild(
-    "p",
-    loadPromptFiles(step.prompt, ctx.base),
-    scope,
-    ""
-  );
-
-  //opts fields
-  fields = emitAgentOptsFields(step, "p", ctx.loadedSchemas, "  ");
-
-  //comment and assignment
-  lines.push("//agent step: " + asName);
-  lines.push(promptBuild.trimEnd());
-  lines.push("let " + asName + " = agent(p, #{\n" + fields + "\n});");
-
-  //register binding
-  registerBinding(ctx, asName);
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitAgentStep
-}
-
-/*
- * @description emit a parallel_over step that fans out over an array binding
- * @param step - parallel step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitParallelStep(step, ctx) {
-
-  //variables
-  let asName = ""; //results binding
-  let overName = ""; //array to iterate
-  let itemAs = ""; //loop item local
-  let indexAs = ""; //loop index local
-  let jobsName = ""; //jobs array local
-  let labelPrefix = ""; //label prefix
-  let lines = []; //source lines
-  let scope = null; //template scope
-  let promptBuild = ""; //inner prompt build
-  let fields = ""; //job opts
-  let labelExpr = ""; //label rhai expression
-
-  //result binding
-  asName = assertIdent(step.as, "parallel.as");
-
-  //array source binding
-  overName = assertIdent(step.over, "parallel.over");
-
-  //require known collection
-  if (!ctx.knownVars[overName]) {
-
-    //unknown over target
-    throw new Error("parallel.over '" + overName + "' is not a known binding");
-
-  //end over guard
-  }
-
-  //loop item name
-  itemAs = assertIdent(step.item_as || "item", "parallel.item_as");
-
-  //loop index name
-  indexAs = assertIdent(step.index_as || "index", "parallel.index_as");
-
-  //jobs array name derived from result binding
-  jobsName = asName + "_jobs";
-
-  //label prefix
-  labelPrefix = typeof step.label_prefix === "string" ? step.label_prefix : asName;
-
-  //template scope includes loop locals
-  scope = {
-    argsLocals: ctx.argsLocals, //args
-    knownVars: ctx.knownVars, //prior bindings
-    itemAs: itemAs, //loop item
-    indexAs: indexAs, //loop index
-  };
-
-  //also expose item/index aliases in knownVars for ref roots during prompt build
-  scope.knownVars = Object.assign({}, ctx.knownVars);
-  scope.knownVars[itemAs] = true;
-  scope.knownVars[indexAs] = true;
-
-  //load prompt source files from {base}/prompts, then expand {{templates}}
-  promptBuild = templateMod.emitPromptBuild(
-    "p",
-    loadPromptFiles(step.prompt, ctx.base),
-    scope,
-    "  "
-  );
-
-  //job fields (label handled separately for dynamic index)
-  fields = emitAgentOptsFields(
-    {
-      agent_type: step.agent_type, //type
-      capability_mode: step.capability_mode, //mode
-      output_schema: step.output_schema, //schema
-      label: undefined, //dynamic label below
-      prompt: step.prompt, //unused here
-    },
-    "p",
-    ctx.loadedSchemas,
-    "    "
-  );
-
-  //dynamic label with index
-  labelExpr =
-    jsonToRhaiMod.emitRhaiString(labelPrefix + ":") +
-    " + " +
-    indexAs +
-    ".to_string()";
-
-  //emit parallel fan-out
-  lines.push("//parallel over " + overName + " → " + asName);
-  lines.push("let " + jobsName + " = [];");
-  lines.push("let " + indexAs + " = 0;");
-  lines.push("for " + itemAs + " in " + overName + " {");
-  lines.push(promptBuild.trimEnd());
-  lines.push("  " + jobsName + ".push(#{");
-  lines.push(fields);
-  lines.push("    label: " + labelExpr + ",");
-  lines.push("  });");
-  lines.push("  " + indexAs + " += 1;");
-  lines.push("}");
-  lines.push("let " + asName + " = parallel(" + jobsName + ");");
-
-  //register results binding
-  registerBinding(ctx, asName);
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitParallelStep
-}
-
-/*
- * @description emit collect: merge a nested array field from parallel agent results
- * @param step - collect step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitCollectStep(step, ctx) {
-
-  //variables
-  let asName = ""; //output array
-  let fromName = ""; //parallel results
-  let field = ""; //output field name
-  let lines = []; //source lines
-
-  //bindings
-  asName = assertIdent(step.as, "collect.as");
-  fromName = assertIdent(step.from, "collect.from");
-  field = assertIdent(step.field, "collect.field");
-
-  //require known from
-  if (!ctx.knownVars[fromName]) {
-
-    //unknown source
-    throw new Error("collect.from '" + fromName + "' is not a known binding");
-
-  //end from guard
-  }
-
-  //emit merge loop
-  lines.push("//collect " + fromName + "[].output." + field + " → " + asName);
-  lines.push("let " + asName + " = [];");
-  lines.push("for r in " + fromName + " {");
-  lines.push("  if r != () && r.success && r.output." + field + " != () {");
-  lines.push("    for item in r.output." + field + " {");
-  lines.push("      " + asName + ".push(item);");
-  lines.push("    }");
-  lines.push("  }");
-  lines.push("}");
-
-  //register binding
-  registerBinding(ctx, asName);
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitCollectStep
-}
-
-/*
- * @description emit zip_filter: keep left items whose parallel verdict says real=true
- * @param step - zip_filter step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitZipFilterStep(step, ctx) {
-
-  //variables
-  let asName = ""; //survivors binding
-  let droppedAs = ""; //dropped ids binding
-  let leftName = ""; //candidates
-  let rightName = ""; //verdicts parallel results
-  let lines = []; //source lines
-
-  //bindings
-  asName = assertIdent(step.as, "zip_filter.as");
-  leftName = assertIdent(step.left, "zip_filter.left");
-  rightName = assertIdent(step.right, "zip_filter.right");
-
-  //optional dropped list
-  droppedAs = step.dropped_as ? assertIdent(step.dropped_as, "zip_filter.dropped_as") : null;
-
-  //require known inputs
-  if (!ctx.knownVars[leftName]) {
-
-    //unknown left
-    throw new Error("zip_filter.left '" + leftName + "' is not a known binding");
-
-  //end left guard
-  }
-
-  //require known right
-  if (!ctx.knownVars[rightName]) {
-
-    //unknown right
-    throw new Error("zip_filter.right '" + rightName + "' is not a known binding");
-
-  //end right guard
-  }
-
-  //emit zip filter
-  lines.push("//zip_filter " + leftName + " with " + rightName + " → " + asName);
-  lines.push("let " + asName + " = [];");
-
-  //optional dropped accumulator
-  if (droppedAs) {
-
-    //dropped ids
-    lines.push("let " + droppedAs + " = [];");
-
-  //end dropped init
-  }
-
-  //index walk
-  lines.push("let zi = 0;");
-  lines.push("for v in " + rightName + " {");
-  lines.push("  let cand = " + leftName + "[zi];");
-  //evidence is an array of {source, quote}; require a non-empty list
-  lines.push("  if v != () && v.success && v.output.real == true && v.output.evidence != () && v.output.evidence.len() > 0 {");
-  lines.push("    " + asName + ".push(cand);");
-  lines.push("  } else {");
-
-  //dropped branch
-  if (droppedAs) {
-
-    //record dropped id when present
-    lines.push("    " + droppedAs + ".push(cand.id);");
-
-  //end dropped push
-  }
-
-  //close else and loop
-  lines.push("  }");
-  lines.push("  zi += 1;");
-  lines.push("}");
-
-  //register survivors
-  registerBinding(ctx, asName);
-
-  //register dropped when used
-  if (droppedAs) {
-
-    //known dropped
-    registerBinding(ctx, droppedAs);
-
-  //end dropped register
-  }
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitZipFilterStep
-}
-
-/*
- * @description emit a complete() value tree with optional { "$ref": "binding" } nodes
- * @param value - static JSON or $ref markers
- * @param ctx - compiler context for known bindings
- * @param indent - current indent for nested maps/arrays
- * @returns Rhai expression source
- */
-function emitCompleteValue(value, ctx, indent) {
-
-  //variables
-  let refName = ""; //$ref binding
-  let keys = null; //object keys
-  let i = 0; //loop index
-  let key = ""; //field name
-  let parts = []; //nested lines
-  let nextIndent = ""; //child indent
-
-  //default indent
-  if (!indent) {
-
-    //root indent
-    indent = "";
-
-  //end default indent
-  }
-
-  //live binding reference
-  if (value && typeof value === "object" && !Array.isArray(value) && typeof value.$ref === "string") {
-
-    //binding name
-    refName = assertIdent(value.$ref, "complete.$ref");
-
-    //must be known
-    if (!ctx.knownVars[refName]) {
-
-      //unknown ref
-      throw new Error("complete $ref '" + refName + "' is not a known binding");
-
-    //end known guard
-    }
-
-    //bare rhai identifier
-    return refName;
-
-  //end $ref branch
-  }
-
-  //null / scalars / arrays without $ref → standard json emitter
-  if (value === null || typeof value !== "object") {
-
-    //scalar or null
-    return jsonToRhaiMod.jsonToRhai(value, indent);
-
-  //end scalar branch
-  }
-
-  //arrays: recurse for possible $ref elements
-  if (Array.isArray(value)) {
-
-    //empty array
-    if (value.length === 0) {
-
-      //empty
-      return "[]";
-
-    //end empty array
-    }
-
-    //child indent
-    nextIndent = indent + "  ";
-
-    //collect elements
-    parts = [];
-
-    //walk elements
-    i = 0;
-
-    //each element
-    while (i < value.length) {
-
-      //emit element
-      parts.push(nextIndent + emitCompleteValue(value[i], ctx, nextIndent) + ",");
-
-      //next
-      i += 1;
-
-    //end element walk
-    }
-
-    //multi-line array
-    return "[\n" + parts.join("\n") + "\n" + indent + "]";
-
-  //end array branch
-  }
-
-  //objects as maps (sorted keys for stability)
-  keys = Object.keys(value).sort();
-
-  //empty map
-  if (keys.length === 0) {
-
-    //empty
-    return "#{}";
-
-  //end empty map
-  }
-
-  //child indent
-  nextIndent = indent + "  ";
-
-  //field lines
-  parts = [];
-
-  //walk keys
+  //walk stations
   i = 0;
 
-  //each field
-  while (i < keys.length) {
+  //each station object
+  while (i < stations.length) {
 
-    //field name
-    key = keys[i];
+    //raw entry
+    raw = stations[i];
 
-    //field line
-    parts.push(
-      nextIndent +
-      jsonToRhaiMod.emitRhaiMapKey(key) +
-      ": " +
-      emitCompleteValue(value[key], ctx, nextIndent) +
-      ","
-    );
+    //require object
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 
-    //next key
-    i += 1;
+      //bad entry
+      throw new Error("stations[" + i + "] must be an object");
 
-  //end key walk
-  }
+    //end object guard
+    }
 
-  //multi-line map
-  return "#{\n" + parts.join("\n") + "\n" + indent + "}";
+    //name → Rhai fn name and phase title
+    name = assertIdent(raw.name, "stations[" + i + "].name");
 
-//end emitCompleteValue
-}
+    //unique names
+    if (seen[name]) {
 
-/*
- * @description emit complete with a JSON-like value (supports { "$ref": "binding" })
- * @param step - complete step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitCompleteStep(step, ctx) {
+      //duplicate
+      throw new Error("stations[" + i + "].name duplicates station \"" + name + "\"");
 
-  //variables
-  let valueSrc = ""; //rhai value
+    //end dup guard
+    }
 
-  //require value object
-  if (step.value === undefined) {
+    //mark seen
+    seen[name] = true;
 
-    //missing value
-    throw new Error("complete.value is required");
+    //require prompt list (binding names when workflow.prompts set, else file paths)
+    if (!Array.isArray(raw.prompt) || raw.prompt.length === 0) {
 
-  //end value guard
-  }
+      //missing prompts
+      throw new Error(
+        "stations[" + i + "].prompt must be a non-empty array of prompt " +
+        "binding names (workflow.prompts) or file paths under prompts/"
+      );
 
-  //emit value as Rhai (with optional $ref nodes)
-  valueSrc = emitCompleteValue(step.value, ctx, "");
+    //end prompt guard
+    }
 
-  //complete call
-  return "//complete run\ncomplete(" + valueSrc + ");\n";
+    //normalized station
+    entry = {
+      name: name, //ident
+      prompt: raw.prompt, //bindings or paths (resolved at emit)
+    };
 
-//end emitCompleteStep
-}
+    //reject old phase subtitle name
+    if (raw.detail !== undefined) {
 
-/*
- * @description emit complete that merges a result binding's output with extra static fields
- * @param step - complete_from step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitCompleteFromStep(step, ctx) {
+      //rename required
+      throw new Error(
+        "stations[" + i + "].detail is not supported; use uiDescription " +
+        "(emitted as meta.phases[].detail for Grok)"
+      );
 
-  //variables
-  let fromName = ""; //agent result binding
-  let lines = []; //source lines
-  let extra = null; //extra static fields
-  let keys = null; //extra keys
-  let i = 0; //loop index
-  let key = ""; //field name
-  let mapFields = []; //map field lines
+    //end old name guard
+    }
 
-  //source binding
-  fromName = assertIdent(step.from, "complete_from.from");
+    //optional UI description → meta.phases[].detail
+    if (typeof raw.uiDescription === "string") {
 
-  //must be known
-  if (!ctx.knownVars[fromName]) {
+      //phase rail subtitle
+      entry.uiDescription = raw.uiDescription;
 
-    //unknown from
-    throw new Error("complete_from.from '" + fromName + "' is not a known binding");
+    //end uiDescription
+    }
 
-  //end from guard
-  }
+    //optional agent label (default name)
+    if (typeof raw.label === "string") {
 
-  //optional extra static fields
-  extra = step.extra && typeof step.extra === "object" && !Array.isArray(step.extra) ? step.extra : {};
+      //label
+      entry.label = raw.label;
 
-  //build map fields starting with output passthrough helpers is hard in Rhai without spread
-  //emit: complete(#{ summary: from.output.summary, ... static, output: from.output }) pattern
-  //simpler approach: complete(from.output) when no extra; else build map with known keys from extra + from_output field
-  mapFields = [];
+    //end label
+    }
 
-  //when extras exist, emit them first
-  keys = Object.keys(extra).sort();
+    //optional agent_type
+    if (typeof raw.agent_type === "string") {
 
-  //walk extras
-  i = 0;
+      //type
+      entry.agent_type = raw.agent_type;
 
-  //each extra field
-  while (i < keys.length) {
+    //end agent_type
+    }
 
-    //field name
-    key = keys[i];
+    //optional capability_mode
+    if (typeof raw.capability_mode === "string") {
 
-    //static field
-    mapFields.push("  " + jsonToRhaiMod.emitRhaiMapKey(key) + ": " + jsonToRhaiMod.jsonToRhai(extra[key], "  ") + ",");
+      //mode
+      entry.capability_mode = raw.capability_mode;
+
+    //end capability_mode
+    }
+
+    //optional schema binding names (prompt guidance only; not host-enforced)
+    if (raw.schemas !== undefined) {
+
+      //must be an array of binding names
+      if (!Array.isArray(raw.schemas)) {
+
+        //bad type
+        throw new Error(
+          "stations[" + i + "].schemas must be an array of schema binding names"
+        );
+
+      //end array guard
+      }
+
+      //normalize each binding
+      entry.schemas = normalizeStationSchemaRefs(raw.schemas, i);
+
+    //end schemas field
+    }
+
+    //store
+    out.push(entry);
 
     //next
     i += 1;
 
-  //end extra walk
+  //end station walk
   }
 
-  //include full agent output under output key and common passthrough of issues when use_output_fields
-  if (step.pass_output === true) {
+  //normalized stations
+  return out;
 
-    //attach entire output object
-    mapFields.push("  output: " + fromName + ".output,");
-
-  //end pass_output
-  }
-
-  //default: complete with the agent's output object when no map fields
-  if (mapFields.length === 0) {
-
-    //direct complete of output
-    lines.push("//complete from " + fromName + ".output");
-    lines.push("complete(" + fromName + ".output);");
-
-  } else {
-
-    //map complete
-    lines.push("//complete from " + fromName + " with extra fields");
-    lines.push("complete(#{");
-    lines.push(mapFields.join("\n"));
-    lines.push("});");
-
-  //end map branch
-  }
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitCompleteFromStep
+//end normalizeStations
 }
 
 /*
- * @description mark a binding as known and already introduced with let
- * @param ctx - compiler context
- * @param name - binding identifier
- * @returns nothing
+ * @description normalize stations[].schemas to binding name strings
+ * @param refs - raw array of schema binding names
+ * @param stationIndex - stations[] index for error labels
+ * @returns array of binding identifiers
  */
-function registerBinding(ctx, name) {
-
-  //known for refs and when.path
-  ctx.knownVars[name] = true;
-
-  //already has a let (agent/parallel/set first assign)
-  if (!ctx.declaredLets) {
-
-    //defensive init
-    ctx.declaredLets = {};
-
-  //end init
-  }
-
-  //declared
-  ctx.declaredLets[name] = true;
-
-//end registerBinding
-}
-
-/*
- * @description collect set.as names from a step list (including nested branches)
- * @param steps - step array or null
- * @param out - map name → true
- * @returns nothing
- */
-function collectSetTargets(steps, out) {
+function normalizeStationSchemaRefs(refs, stationIndex) {
 
   //variables
   let i = 0; //index
-  let step = null; //current
-  let j = 0; //else_if index
-  let branch = null; //else_if entry
+  let out = []; //normalized bindings
+  let binding = ""; //one name
+  let label = ""; //error origin
 
-  //nothing to scan
-  if (!Array.isArray(steps)) {
+  //each element must be a schema binding ident
+  i = 0;
 
-    //done
-    return;
+  //walk refs
+  while (i < refs.length) {
+
+    //origin label
+    label = "stations[" + stationIndex + "].schemas[" + i + "]";
+
+    //require non-empty string
+    if (typeof refs[i] !== "string" || refs[i].length === 0) {
+
+      //bad entry
+      throw new Error(label + " must be a non-empty schema binding name");
+
+    //end string guard
+    }
+
+    //identifier (keyword-guarded)
+    binding = assertIdent(refs[i], label);
+
+    //store
+    out.push(binding);
+
+    //next
+    i += 1;
+
+  //end walk
+  }
+
+  //binding list (may be empty)
+  return out;
+
+//end normalizeStationSchemaRefs
+}
+
+/*
+ * @description resolve station schema refs against loaded top-level schemas
+ * @param stations - normalized stations
+ * @param loadedSchemas - binding → schema object
+ */
+function assertStationSchemasResolved(stations, loadedSchemas) {
+
+  //variables
+  let i = 0; //station index
+  let j = 0; //schema ref index
+  let st = null; //station
+  let binding = ""; //schema binding
+
+  //each station
+  i = 0;
+
+  //walk stations
+  while (i < stations.length) {
+
+    //station
+    st = stations[i];
+
+    //only when schemas listed
+    if (Array.isArray(st.schemas)) {
+
+      //each ref
+      j = 0;
+
+      //walk refs
+      while (j < st.schemas.length) {
+
+        //binding name
+        binding = st.schemas[j];
+
+        //must exist in workflow.schemas
+        if (!loadedSchemas[binding]) {
+
+          //unknown binding
+          throw new Error(
+            "stations[" + i + "].schemas[" + j + "] '" + binding +
+            "' was not declared in workflow.schemas"
+          );
+
+        //end missing guard
+        }
+
+        //next ref
+        j += 1;
+
+      //end ref walk
+      }
+
+    //end has schemas
+    }
+
+    //next station
+    i += 1;
+
+  //end station walk
+  }
+
+//end assertStationSchemasResolved
+}
+
+/*
+ * @description Rhai lines that append Additional Schemas block onto station prompt extra
+ * @param station - normalized station (may have schemas[])
+ * @param loadedSchemas - binding → schema object
+ * @param indent - leading whitespace for Rhai statements
+ * @returns Rhai source (empty string when no schemas)
+ */
+function emitStationAdditionalSchemasAppend(station, loadedSchemas, indent) {
+
+  //variables
+  let lines = []; //rhai lines
+  let i = 0; //index
+  let binding = ""; //schema name
+  let schemaJson = ""; //pretty JSON text
+  let block = ""; //full section text
+  let parts = []; //section pieces
+
+  //nothing to append
+  if (!Array.isArray(station.schemas) || station.schemas.length === 0) {
+
+    //no section
+    return "";
 
   //end empty
   }
 
-  //walk steps
+  //heading + best-effort adjuration
+  parts.push("");
+  parts.push("## Additional Schemas");
+  parts.push("");
+  parts.push(
+    "Make a best effort to conform to the following schemas wherever they apply, " +
+    "as indicated by each schema's description (and related fields). " +
+    "These guide how you read and write values inside the flow document " +
+    "(especially under flow.state); they are not separately host-enforced beyond " +
+    "the flow envelope output_schema."
+  );
+  parts.push("");
+
+  //each referenced schema
   i = 0;
 
-  //each step
-  while (i < steps.length) {
+  //walk
+  while (i < station.schemas.length) {
 
-    //current
-    step = steps[i];
+    //binding
+    binding = station.schemas[i];
 
-    //object steps only
-    if (step && typeof step === "object" && !Array.isArray(step)) {
+    //pretty-print schema for the prompt
+    schemaJson = JSON.stringify(loadedSchemas[binding], null, 2);
 
-      //set targets
-      if (step.op === "set" && typeof step.as === "string" && step.as.length > 0) {
-
-        //record name (validated later at hoist/set emit)
-        out[step.as] = true;
-
-      //end set
-      }
-
-      //nested then
-      collectSetTargets(step.then, out);
-
-      //nested else
-      collectSetTargets(step.else, out);
-
-      //nested else_if
-      if (Array.isArray(step.else_if)) {
-
-        //walk branches
-        j = 0;
-
-        //each else_if
-        while (j < step.else_if.length) {
-
-          //branch
-          branch = step.else_if[j];
-
-          //then of branch
-          if (branch && typeof branch === "object") {
-
-            //nested
-            collectSetTargets(branch.then, out);
-
-          //end branch object
-          }
-
-          //next
-          j += 1;
-
-        //end else_if walk
-        }
-
-      //end else_if
-      }
-
-    //end object step
-    }
+    //subsection per binding
+    parts.push("### " + binding);
+    parts.push("");
+    parts.push("```json");
+    parts.push(schemaJson);
+    parts.push("```");
+    parts.push("");
 
     //next
     i += 1;
 
-  //end step walk
+  //end walk
   }
 
-//end collectSetTargets
+  //joined section
+  block = parts.join("\n");
+
+  //append onto extra after author prompt files
+  lines.push(indent + "//station schemas (prompt guidance; best effort)");
+  lines.push(indent + "extra += " + jsonToRhaiMod.emitRhaiString(block) + ";");
+
+  //rhai fragment
+  return lines.join("\n");
+
+//end emitStationAdditionalSchemasAppend
 }
 
 /*
- * @description hoist let name = () for set targets used inside a branchy step
- * @param step - if / if_empty / if_failed step
- * @param ctx - compiler context
- * @returns Rhai source (may be empty) ending with newline when non-empty
+ * @description build meta.phases from stations array
+ * @param stations - normalized stations
+ * @returns phases array for emitMeta
  */
-function hoistSetBindingsForStep(step, ctx) {
+function phasesFromStations(stations) {
 
   //variables
-  const names = {}; //set targets
-  let keys = null; //sorted names
   let i = 0; //index
-  let name = ""; //binding
-  let lines = []; //hoist lets
+  let phases = []; //result
+  let st = null; //station
+  let phase = null; //phase entry
 
-  //ensure map
-  if (!ctx.declaredLets) {
+  //each station → one phase
+  i = 0;
 
-    //init
-    ctx.declaredLets = {};
+  //walk
+  while (i < stations.length) {
 
-  //end init
-  }
+    //station
+    st = stations[i];
 
-  //collect from all arms
-  collectSetTargets(step.then, names);
-  collectSetTargets(step.else, names);
+    //phase title is station name
+    phase = {
+      title: st.name, //phase rail title
+    };
 
-  //else_if arms
-  if (Array.isArray(step.else_if)) {
+    //optional UI description (emitMeta maps to Grok detail)
+    if (typeof st.uiDescription === "string") {
 
-    //walk
-    i = 0;
+      //author-facing field until emit
+      phase.uiDescription = st.uiDescription;
 
-    //each
-    while (i < step.else_if.length) {
-
-      //branch then
-      if (step.else_if[i] && step.else_if[i].then) {
-
-        //collect
-        collectSetTargets(step.else_if[i].then, names);
-
-      //end then
-      }
-
-      //next
-      i += 1;
-
-    //end walk
+    //end uiDescription
     }
 
-  //end else_if
+    //store
+    phases.push(phase);
+
+    //next
+    i += 1;
+
+  //end walk
+  }
+
+  //phases for meta
+  return phases;
+
+//end phasesFromStations
+}
+
+/*
+ * @description build the flow envelope JSON Schema object (optional payload subschema)
+ * @param payloadSchema - inlined payload schema object, or null for open nullable payload
+ * @returns envelope schema object
+ */
+function buildFlowEnvelopeSchema(payloadSchema) {
+
+  //variables
+  let payload = null; //payload property schema
+
+  //payload: author schema or open object|null
+  if (payloadSchema && typeof payloadSchema === "object") {
+
+    //inlined author payload
+    payload = payloadSchema;
+
+  } else {
+
+    //default open payload
+    payload = {
+      type: ["object", "null"], //nullable object
+      description: "Workflow-specific payload (no payloadSchema declared)",
+    };
+
+  //end payload branch
+  }
+
+  //fixed envelope + modular payload
+  return {
+    type: "object",
+    required: ["stations", "log", "current", "next", "msg", "state", "payload"],
+    properties: {
+      stations: {
+        type: "array",
+        items: { type: "string" },
+      },
+      log: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["station", "msg"],
+          properties: {
+            station: { type: "string" },
+            msg: { type: "string" },
+          },
+        },
+      },
+      current: { type: ["string", "null"] },
+      next: { type: ["string", "null"] },
+      msg: { type: ["string", "null"] },
+      state: {
+        type: "object",
+        additionalProperties: true,
+      },
+      payload: payload, //inlined or default
+    },
+  };
+
+//end buildFlowEnvelopeSchema
+}
+
+/*
+ * @description load optional workflow.payloadSchema and fully inline $refs
+ * @param workflow - workflow document
+ * @param baseDir - asset base
+ * @returns inlined schema object or null when omitted
+ */
+function loadPayloadSchema(workflow, baseDir) {
+
+  //variables
+  let rel = ""; //path under schemas/
+  let schemasDir = ""; //absolute schemas dir
+  let inlined = null; //result
+
+  //optional
+  if (workflow.payloadSchema === undefined || workflow.payloadSchema === null) {
+
+    //none
+    return null;
+
+  //end omit
+  }
+
+  //must be string path
+  if (typeof workflow.payloadSchema !== "string" || workflow.payloadSchema.length === 0) {
+
+    //bad
+    throw new Error("workflow.payloadSchema must be a non-empty path under schemas/");
+
+  //end type
+  }
+
+  //path under schemas root (legacy schemas/ or pack base)
+  rel = workflow.payloadSchema;
+  schemasDir = resolveSchemasDir(baseDir);
+
+  //load + inline
+  try {
+
+    //resolve refs
+    inlined = schemaInlineMod.loadAndInline(rel, schemasDir);
+
+  } catch (err) {
+
+    //log
+    console.error("failed to load payloadSchema '" + rel + "'", err);
+
+    //fail closed
+    throw new Error(
+      "failed to load workflow.payloadSchema '" + rel + "': " + err.message
+    );
+
+  //end load
+  }
+
+  //inlined payload schema
+  return inlined;
+
+//end loadPayloadSchema
+}
+
+/*
+ * @description emit make_flow_schema() with optional inlined payload
+ * @param payloadSchema - inlined payload schema or null
+ * @returns Rhai source
+ */
+function emitMakeFlowSchemaFn(payloadSchema) {
+
+  //variables
+  let envelope = null; //JSON schema object
+  let body = ""; //rhai map literal
+
+  //build envelope (payload inlined into properties.payload)
+  envelope = buildFlowEnvelopeSchema(payloadSchema);
+
+  //emit as Rhai map
+  body = jsonToRhaiMod.jsonToRhai(envelope, "    ");
+
+  //function returning the envelope
+  return (
+    "//flow envelope schema (agent returns the full flow object; payload inlined at compile time)\n" +
+    "fn make_flow_schema() {\n" +
+    "    " + body + "\n" +
+    "}\n"
+  );
+
+//end emitMakeFlowSchemaFn
+}
+
+/*
+ * @description emit shared station_prompt + run_station helpers for flow scripts
+ * @returns Rhai source
+ */
+function emitFlowStationHelpers() {
+
+  //standard imperatives; station-specific text is the extra argument
+  return (
+    "fn station_prompt(station_name, flow, extra) {\n" +
+    "    let p = \"\";\n" +
+    "    p += \"You are the workflow station named \\\"\" + station_name + \"\\\".\\n\";\n" +
+    "    p += \"You receive a single JSON object called flow. You must return the FULL modified flow object.\\n\\n\";\n" +
+    "    p += \"IMPERATIVES (do these in order):\\n\";\n" +
+    "    p += \"1. FIRST set flow.next and flow.msg both to null.\\n\";\n" +
+    "    p += \"2. Append one log entry to flow.log: { \\\"station\\\": \\\"\" + station_name + \"\\\", \\\"msg\\\": \\\"Hello from \" + station_name + \"\\\" }.\\n\";\n" +
+    "    p += \"3. Ensure flow.state[\\\"\" + station_name + \"\\\"] is an object and set status to \\\"complete\\\". \";\n" +
+    "    p += \"Preserve other keys on that object and other stations' state unless your station-specific rules say otherwise.\\n\";\n" +
+    "    p += \"4. DEFAULT ROUTING: set flow.next to the station name immediately after flow.current in flow.stations \";\n" +
+    "    p += \"(same array order). If this is the last station, set flow.next to null. \";\n" +
+    "    p += \"Do not hard-code a successor by name for the default path — look it up on flow.stations. \";\n" +
+    "    p += \"Only set flow.next to a different station name (or null early) when station-specific conditions require it.\\n\";\n" +
+    "    p += \"5. You may set flow.msg for the next station, or leave it null.\\n\";\n" +
+    "    p += \"6. Preserve flow.stations, flow.payload, prior log entries, and other stations' state " +
+    "unless station-specific rules update payload.\\n\";\n" +
+    "    p += \"7. Return the complete modified flow object as your only structured result.\\n\";\n" +
+    "    if extra != () && extra != \"\" {\n" +
+    "        p += \"\\nSTATION-SPECIFIC INSTRUCTIONS:\\n\";\n" +
+    "        p += extra;\n" +
+    "        p += \"\\n\";\n" +
+    "    }\n" +
+    "    p += \"\\nCurrent flow JSON:\\n\";\n" +
+    "    p += json_encode(flow);\n" +
+    "    p\n" +
+    "}\n" +
+    "\n" +
+    "fn run_station(station_name, flow, extra) {\n" +
+    "    phase(station_name);\n" +
+    "    flow.current = station_name;\n" +
+    "    let output = agent(\n" +
+    "        station_prompt(station_name, flow, extra),\n" +
+    "        #{\n" +
+    "            label: station_name,\n" +
+    "            capability_mode: \"read-only\",\n" +
+    "            output_schema: make_flow_schema(),\n" +
+    "        }\n" +
+    "    );\n" +
+    "    if output == () || !output.success || output.output == () {\n" +
+    "        flow.next = ();\n" +
+    "        flow.msg = \"Station agent failed: \" + station_name;\n" +
+    "        flow.log.push(#{\n" +
+    "            station: station_name,\n" +
+    "            msg: \"ORCHESTRATOR: agent failed; clearing next\",\n" +
+    "        });\n" +
+    "        return flow;\n" +
+    "    }\n" +
+    "    output.output\n" +
+    "}\n"
+  );
+
+//end emitFlowStationHelpers
+}
+
+/*
+ * @description whether the workflow declares any args locals for station injection
+ * @param ctx - compile context
+ * @returns boolean
+ */
+function flowHasArgsLocals(ctx) {
+
+  //has map with keys
+  return !!(
+    ctx &&
+    ctx.argsLocals &&
+    typeof ctx.argsLocals === "object" &&
+    Object.keys(ctx.argsLocals).length > 0
+  );
+
+//end flowHasArgsLocals
+}
+
+/*
+ * @description top-level Rhai: encode resolved args locals to workflow_args_json
+ * (station fns cannot see outer lets or args — pass this string into each station)
+ * @param ctx - compile context with argsLocals
+ * @returns Rhai source or empty string
+ */
+function emitWorkflowArgsJsonLocal(ctx) {
+
+  //variables
+  let keys = null; //arg names
+  let i = 0; //index
+  let lines = []; //rhai
+  let mapFields = []; //map fields
+
+  //no args
+  if (!flowHasArgsLocals(ctx)) {
+
+    //empty
+    return "";
+
+  //end empty
   }
 
   //stable order
-  keys = Object.keys(names).sort();
-
-  //hoist each new name
+  keys = Object.keys(ctx.argsLocals).sort();
   i = 0;
 
-  //walk names
+  //walk
   while (i < keys.length) {
 
-    //candidate
-    name = assertIdent(keys[i], "set.as");
+    //field from outer local (this runs at script top level, not inside a station fn)
+    mapFields.push("    " + keys[i] + ": " + keys[i] + ",");
 
-    //reject arg collision
-    if (ctx.argsLocals && ctx.argsLocals[name]) {
+    //next
+    i += 1;
 
-      //clash
-      throw new Error("set.as '" + name + "' collides with a workflow arg name");
+  //end walk
+  }
 
-    //end arg guard
+  //encode once for Fn(...).call(flow, workflow_args_json)
+  lines.push("//JSON snapshot of workflow args — passed into station functions");
+  lines.push("let workflow_args_json = json_encode(#{");
+  lines.push(mapFields.join("\n"));
+  lines.push("});");
+  lines.push("");
+
+  //source
+  return lines.join("\n");
+
+//end emitWorkflowArgsJsonLocal
+}
+
+/*
+ * @description Rhai lines that append workflow_args_json onto station prompt extra
+ * @param ctx - compile context with argsLocals
+ * @param indent - leading whitespace
+ * @returns Rhai source (empty when no args)
+ */
+function emitFlowArgsContextAppend(ctx, indent) {
+
+  //variables
+  let lines = []; //rhai
+
+  //no args
+  if (!flowHasArgsLocals(ctx)) {
+
+    //empty
+    return "";
+
+  //end empty
+  }
+
+  //parameter workflow_args_json is passed into the station fn
+  lines.push(indent + "//workflow args for source-agnostic station prompts");
+  lines.push(indent + "extra += \"\\n## Workflow args (JSON)\\n\";");
+  lines.push(indent + "extra += workflow_args_json + \"\\n\";");
+
+  //fragment
+  return lines.join("\n");
+
+//end emitFlowArgsContextAppend
+}
+
+/*
+ * @description emit one station function (fn Name(flow) { … })
+ * @param station - normalized station
+ * @param ctx - compile context (base, argsLocals)
+ * @returns Rhai source
+ */
+function emitStationFunction(station, ctx) {
+
+  //variables
+  let lines = []; //source lines
+  let scope = null; //template scope
+  let promptBuild = ""; //extra body from prompt files
+  let schemaAppend = ""; //Additional Schemas rhai fragment
+  let argsAppend = ""; //workflow args JSON append
+  let name = station.name; //fn name
+
+  //template scope: args only (no step bindings in flow mode)
+  scope = {
+    argsLocals: ctx.argsLocals, //args
+    knownVars: {}, //no step bindings
+    itemAs: null, //no loop item
+    indexAs: null, //no loop index
+  };
+
+  //resolve bindings → paths (or legacy paths), then load + merge in order
+  promptBuild = templateMod.emitPromptBuild(
+    "extra",
+    loadPromptFiles(
+      resolvePromptList(
+        station.prompt,
+        ctx.promptRegistry,
+        "station " + name + ".prompt"
+      ),
+      ctx.base
+    ),
+    scope,
+    "    "
+  );
+
+  //fn Name(flow) or Name(flow, workflow_args_json) — Rhai fns do not capture outer lets
+  lines.push("//station: " + name);
+  if (flowHasArgsLocals(ctx)) {
+
+    //second param: JSON snapshot from top-level driver
+    lines.push("fn " + name + "(flow, workflow_args_json) {");
+
+  } else {
+
+    //flow only
+    lines.push("fn " + name + "(flow) {");
+
+  //end signature
+  }
+  lines.push(promptBuild.trimEnd());
+
+  //inject declared args as JSON (keeps prompt files free of hard-coded sources/paths)
+  argsAppend = emitFlowArgsContextAppend(ctx, "    ");
+
+  //append when present
+  if (argsAppend.length > 0) {
+
+    //args context
+    lines.push(argsAppend);
+
+  //end args append
+  }
+
+  //optional station schemas → Additional Schemas section on the prompt
+  schemaAppend = emitStationAdditionalSchemasAppend(
+    station,
+    ctx.loadedSchemas,
+    "    "
+  );
+
+  //append when present
+  if (schemaAppend.length > 0) {
+
+    //guidance block
+    lines.push(schemaAppend);
+
+  //end schema append
+  }
+
+  //optional capability / agent_type / label — re-call agent with overrides when needed
+  //v1: always use run_station; stamp label from station when not default
+  //capability_mode and agent_type on station: emit a local override of run_station inline when present
+  if (
+    typeof station.capability_mode === "string" ||
+    typeof station.agent_type === "string" ||
+    typeof station.label === "string"
+  ) {
+
+    //custom agent opts path
+    lines.push("    phase(" + jsonToRhaiMod.emitRhaiString(name) + ");");
+    lines.push("    flow.current = " + jsonToRhaiMod.emitRhaiString(name) + ";");
+    lines.push("    let output = agent(");
+    lines.push("        station_prompt(" + jsonToRhaiMod.emitRhaiString(name) + ", flow, extra),");
+    lines.push("        #{");
+
+    //label
+    if (typeof station.label === "string") {
+
+      //author label
+      lines.push("            label: " + jsonToRhaiMod.emitRhaiString(station.label) + ",");
+
+    } else {
+
+      //default label = name
+      lines.push("            label: " + jsonToRhaiMod.emitRhaiString(name) + ",");
+
+    //end label
     }
 
-    //already declared → skip hoist
-    if (!ctx.declaredLets[name]) {
+    //capability
+    if (typeof station.capability_mode === "string") {
 
-      //outer let unit so arms can assign
-      lines.push("//hoist binding for branch assignment");
-      lines.push("let " + name + " = ();");
+      //mode
+      lines.push(
+        "            capability_mode: " +
+        jsonToRhaiMod.emitRhaiString(station.capability_mode) +
+        ","
+      );
 
-      //register
-      registerBinding(ctx, name);
+    } else {
 
-    //end hoist one
+      //default read-only
+      lines.push("            capability_mode: \"read-only\",");
+
+    //end capability
     }
+
+    //agent_type
+    if (typeof station.agent_type === "string") {
+
+      //type
+      lines.push(
+        "            agent_type: " +
+        jsonToRhaiMod.emitRhaiString(station.agent_type) +
+        ","
+      );
+
+    //end agent_type
+    }
+
+    //schema
+    lines.push("            output_schema: make_flow_schema(),");
+    lines.push("        }");
+    lines.push("    );");
+    lines.push("    if output == () || !output.success || output.output == () {");
+    lines.push("        flow.next = ();");
+    lines.push(
+      "        flow.msg = \"Station agent failed: \" + " +
+      jsonToRhaiMod.emitRhaiString(name) +
+      ";"
+    );
+    lines.push("        flow.log.push(#{");
+    lines.push("            station: " + jsonToRhaiMod.emitRhaiString(name) + ",");
+    lines.push("            msg: \"ORCHESTRATOR: agent failed; clearing next\",");
+    lines.push("        });");
+    lines.push("        return flow;");
+    lines.push("    }");
+    lines.push("    output.output");
+
+  } else {
+
+    //default helper path
+    lines.push(
+      "    run_station(" +
+      jsonToRhaiMod.emitRhaiString(name) +
+      ", flow, extra)"
+    );
+
+  //end custom vs default
+  }
+
+  //close fn
+  lines.push("}");
+  lines.push("");
+
+  //joined
+  return lines.join("\n");
+
+//end emitStationFunction
+}
+
+/*
+ * @description emit flow object, station functions, and next-dispatch driver
+ * @param stations - normalized stations
+ * @param ctx - compile context (includes payloadSchema?)
+ * @returns Rhai source (body after meta/schemas/args)
+ */
+function emitFlowBody(stations, ctx) {
+
+  //variables
+  let parts = []; //sections
+  let names = []; //station name list for flow.stations
+  let i = 0; //index
+  let payloadSchema = null; //optional inlined payload
+
+  //payload from context (loaded earlier)
+  if (ctx.payloadSchema) {
+
+    //inlined
+    payloadSchema = ctx.payloadSchema;
+
+  //end payload
+  }
+
+  //collect names for flow.stations array
+  i = 0;
+
+  //walk
+  while (i < stations.length) {
+
+    //name as Rhai string
+    names.push(jsonToRhaiMod.emitRhaiString(stations[i].name));
 
     //next
     i += 1;
@@ -1651,879 +2390,138 @@ function hoistSetBindingsForStep(step, ctx) {
   //end name walk
   }
 
-  //joined or empty
-  if (lines.length === 0) {
+  //flow object at top of body (after meta in assemble order we emit flow after args)
+  parts.push("//flow object — stations drive phases, functions, and routing");
+  parts.push("let flow = #{");
+  parts.push("    stations: [" + names.join(", ") + "],");
+  parts.push("    log: [],");
+  parts.push("    current: (),");
+  parts.push("    next: (),");
+  parts.push("    msg: (),");
+  parts.push("    state: #{},");
+  parts.push("    payload: (),");
+  parts.push("};");
+  parts.push("");
 
-    //nothing
-    return "";
+  //schema + helpers (payload subschema inlined into envelope)
+  parts.push(emitMakeFlowSchemaFn(payloadSchema));
+  parts.push("");
+  parts.push(emitFlowStationHelpers());
+  parts.push("");
 
-  //end empty
+  //one fn per station
+  i = 0;
+
+  //walk stations
+  while (i < stations.length) {
+
+    //emit fn
+    parts.push(emitStationFunction(stations[i], ctx));
+
+    //next
+    i += 1;
+
+  //end station fn walk
   }
 
-  //source block
-  return lines.join("\n") + "\n";
+  //encode args at top level (after station defs; before driver) for Fn.call second arg
+  parts.push(emitWorkflowArgsJsonLocal(ctx));
 
-//end hoistSetBindingsForStep
-}
+  //driver: start at first station, dispatch by flow.next
+  parts.push("//driver: route by flow.next until null");
+  parts.push("flow.next = flow.stations[0];");
+  parts.push("while flow.next != () {");
+  parts.push("    log(\"Dispatching station: \" + flow.next);");
+  if (flowHasArgsLocals(ctx)) {
 
-/*
- * @description emit set: assign value (or unit) to a binding; works in flow and branches
- * @param step - set step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitSetStep(step, ctx) {
-
-  //variables
-  let asName = ""; //binding
-  let valueExpr = ""; //rhs
-  let lines = []; //source
-  let isFirst = false; //whether to emit let
-
-  //ensure declared map
-  if (!ctx.declaredLets) {
-
-    //init
-    ctx.declaredLets = {};
-
-  //end init
-  }
-
-  //require as
-  asName = assertIdent(step.as, "set.as");
-
-  //reject arg collision
-  if (ctx.argsLocals && ctx.argsLocals[asName]) {
-
-    //clash
-    throw new Error("set.as '" + asName + "' collides with a workflow arg name");
-
-  //end arg guard
-  }
-
-  //value optional → unit
-  if (step.value === undefined) {
-
-    //unit
-    valueExpr = "()";
+    //pass JSON snapshot — station fns cannot see outer lets or args
+    parts.push("    flow = Fn(flow.next).call(flow, workflow_args_json);");
 
   } else {
 
-    //same tree as complete (supports $ref)
-    valueExpr = emitCompleteValue(step.value, ctx, "");
+    //flow only
+    parts.push("    flow = Fn(flow.next).call(flow);");
 
-  //end value branch
+  //end call arity
   }
+  parts.push("}");
+  parts.push("");
+  parts.push("complete(#{");
+  parts.push("    flow: flow,");
+  parts.push("    flow_json: json_encode(flow),");
+  parts.push("});");
+  parts.push("");
 
-  //first introduction vs reassignment
-  isFirst = !ctx.declaredLets[asName];
+  //joined body
+  return parts.join("\n");
 
-  //comment
-  lines.push("//set " + asName);
-
-  //emit let or assign
-  if (isFirst) {
-
-    //introduce
-    lines.push("let " + asName + " = " + valueExpr + ";");
-
-    //register
-    registerBinding(ctx, asName);
-
-  } else {
-
-    //reassign (including after hoist)
-    lines.push(asName + " = " + valueExpr + ";");
-
-    //ensure known
-    ctx.knownVars[asName] = true;
-
-  //end first/reassign
-  }
-
-  //joined
-  return lines.join("\n") + "\n";
-
-//end emitSetStep
+//end emitFlowBody
 }
 
 /*
- * @description validate a closed-set when condition
- * @param when - { kind, path }
- * @param label - error label (e.g. if.when)
- * @param ctx - compiler context with knownVars
- * @returns normalized { kind, path }
+ * @description reject removed authoring surfaces (step mode, hand-authored phases)
+ * @param workflow - parsed workflow document
  */
-function assertWhen(when, label, ctx) {
+function assertFlowOnlyWorkflow(workflow) {
 
-  //variables
-  let kind = ""; //condition kind
-  let pathName = ""; //binding name
-  const kinds = {
-    empty: true, //array length 0
-    nonempty: true, //array length > 0
-    failed: true, //agent missing or !success
-    succeeded: true, //agent present and success
-  };
+  //legacy linear step pipelines removed
+  if (workflow.scriptType === "step") {
 
-  //require object
-  if (!when || typeof when !== "object" || Array.isArray(when)) {
-
-    //bad when
-    throw new Error(label + " must be an object with kind and path");
-
-  //end type guard
-  }
-
-  //kind
-  kind = when.kind;
-
-  //require string kind in closed set
-  if (typeof kind !== "string" || !kinds[kind]) {
-
-    //unknown or missing kind
+    //explicit step no longer supported
     throw new Error(
-      label + ".kind must be one of empty, nonempty, failed, succeeded (got " +
-      JSON.stringify(kind) +
+      "workflow.scriptType \"step\" was removed; use stations[] (flow-only authoring)"
+    );
+
+  //end step scriptType
+  }
+
+  //optional scriptType may only be flow when present
+  if (
+    workflow.scriptType !== undefined &&
+    workflow.scriptType !== null &&
+    workflow.scriptType !== "flow"
+  ) {
+
+    //unknown value
+    throw new Error(
+      "workflow.scriptType must be omitted or \"flow\" (got " +
+      JSON.stringify(workflow.scriptType) +
       ")"
     );
 
-  //end kind guard
+  //end scriptType value guard
   }
 
-  //path binding
-  pathName = assertIdent(when.path, label + ".path");
-
-  //must be known
-  if (!ctx.knownVars[pathName]) {
-
-    //unknown binding
-    throw new Error(label + ".path '" + pathName + "' is not a known binding");
-
-  //end path guard
-  }
-
-  //normalized when
-  return {
-    kind: kind, //kind
-    path: pathName, //binding
-  };
-
-//end assertWhen
-}
-
-/*
- * @description emit a Rhai boolean expression for a when condition
- * @param when - normalized { kind, path } from assertWhen
- * @returns Rhai expression string
- */
-function emitWhenExpr(when) {
-
-  //dispatch on closed kinds
-  if (when.kind === "empty") {
-
-    //array empty
-    return when.path + ".len() == 0";
-
-  //end empty
-  }
-
-  if (when.kind === "nonempty") {
-
-    //array nonempty
-    return when.path + ".len() > 0";
-
-  //end nonempty
-  }
-
-  if (when.kind === "failed") {
-
-    //agent failed or missing
-    return when.path + " == () || !" + when.path + ".success";
-
-  //end failed
-  }
-
-  if (when.kind === "succeeded") {
-
-    //agent ok
-    return when.path + " != () && " + when.path + ".success";
-
-  //end succeeded
-  }
-
-  //should be unreachable after assertWhen
-  throw new Error("internal: unhandled when.kind '" + when.kind + "'");
-
-//end emitWhenExpr
-}
-
-/*
- * @description validate a non-empty step array for a branch body
- * @param steps - candidate then/else array
- * @param label - error label
- * @returns the same array when valid
- */
-function assertBranchSteps(steps, label) {
-
-  //require non-empty array
-  if (!Array.isArray(steps) || steps.length === 0) {
-
-    //missing body
-    throw new Error(label + " must be a non-empty step array");
-
-  //end guard
-  }
-
-  //ok
-  return steps;
-
-//end assertBranchSteps
-}
-
-/*
- * @description emit optional else block for if / if_empty / if_failed
- * @param elseSteps - step array or undefined
- * @param ctx - compiler context
- * @param label - error label when else is present but invalid
- * @returns Rhai source lines for "} else {\n … \n}" or empty string if no else
- */
-function emitElseBlock(elseSteps, ctx, label) {
-
-  //variables
-  let inner = ""; //else body
-
-  //absent else is fine
-  if (elseSteps === undefined || elseSteps === null) {
-
-    //no else
-    return "";
-
-  //end missing else
-  }
-
-  //validate
-  assertBranchSteps(elseSteps, label);
-
-  //compile body
-  inner = emitSteps(elseSteps, ctx, "  ");
-
-  //else block
-  return "} else {\n" + inner.trimEnd() + "\n}";
-
-//end emitElseBlock
-}
-
-/*
- * @description emit structured if / else_if / else chain
- * @param step - if step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitIfStep(step, ctx) {
-
-  //variables
-  let when0 = null; //primary when
-  let cond0 = ""; //primary expression
-  let thenBody = ""; //then steps source
-  let lines = []; //output lines
-  let elseIfList = null; //else_if array
-  let i = 0; //else_if index
-  let branch = null; //current else_if entry
-  let whenN = null; //else_if when
-  let condN = ""; //else_if expression
-  let thenN = ""; //else_if body
-  let elseBlock = ""; //optional else
-  let hoist = ""; //pre-if let unit for set targets
-
-  //hoist set bindings used in any arm
-  hoist = hoistSetBindingsForStep(step, ctx);
-
-  //primary when
-  when0 = assertWhen(step.when, "if.when", ctx);
-  cond0 = emitWhenExpr(when0);
-
-  //then required
-  assertBranchSteps(step.then, "if.then");
-  thenBody = emitSteps(step.then, ctx, "  ");
-
-  //prepend hoist
-  if (hoist.length > 0) {
-
-    //outer lets
-    lines.push(hoist.trimEnd());
-
-  //end hoist
-  }
-
-  //open if
-  lines.push("//if " + when0.kind + " " + when0.path);
-  lines.push("if " + cond0 + " {");
-  lines.push(thenBody.trimEnd());
-
-  //optional else_if chain
-  if (step.else_if !== undefined && step.else_if !== null) {
-
-    //must be array
-    if (!Array.isArray(step.else_if)) {
-
-      //bad type
-      throw new Error("if.else_if must be an array of { when, then } objects");
-
-    //end type guard
-    }
-
-    //reject empty array when present (fail closed)
-    if (step.else_if.length === 0) {
-
-      //empty
-      throw new Error("if.else_if must be non-empty when present");
-
-    //end empty guard
-    }
-
-    //walk branches
-    elseIfList = step.else_if;
-    i = 0;
-
-    //each else_if
-    while (i < elseIfList.length) {
-
-      //current branch
-      branch = elseIfList[i];
-
-      //require object
-      if (!branch || typeof branch !== "object" || Array.isArray(branch)) {
-
-        //bad entry
-        throw new Error("if.else_if[" + i + "] must be an object with when and then");
-
-      //end object guard
-      }
-
-      //when + then
-      whenN = assertWhen(branch.when, "if.else_if[" + i + "].when", ctx);
-      condN = emitWhenExpr(whenN);
-      assertBranchSteps(branch.then, "if.else_if[" + i + "].then");
-      thenN = emitSteps(branch.then, ctx, "  ");
-
-      //else if block
-      lines.push("} else if " + condN + " {");
-      lines.push(thenN.trimEnd());
-
-      //next
-      i += 1;
-
-    //end else_if walk
-    }
-
-  //end else_if present
-  }
-
-  //optional else
-  elseBlock = emitElseBlock(step.else, ctx, "if.else");
-
-  //close with else or bare close
-  if (elseBlock.length > 0) {
-
-    //append else (starts with "} else {")
-    lines.push(elseBlock);
-
-  } else {
-
-    //close final if / else if
-    lines.push("}");
-
-  //end else close branch
-  }
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitIfStep
-}
-
-/*
- * @description emit if_empty: when an array binding has length 0, run nested steps (usually complete)
- * @param step - if_empty step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitIfEmptyStep(step, ctx) {
-
-  //variables
-  let pathName = ""; //array binding
-  let lines = []; //source lines
-  let inner = ""; //nested steps source
-  let elseBlock = ""; //optional else
-  let hoist = ""; //pre-if lets for set
-
-  //array binding
-  pathName = assertIdent(step.path, "if_empty.path");
-
-  //must be known
-  if (!ctx.knownVars[pathName]) {
-
-    //unknown path
-    throw new Error("if_empty.path '" + pathName + "' is not a known binding");
-
-  //end path guard
-  }
-
-  //hoist set targets from then/else
-  hoist = hoistSetBindingsForStep(step, ctx);
-
-  //require then steps
-  assertBranchSteps(step.then, "if_empty.then");
-
-  //compile nested steps
-  inner = emitSteps(step.then, ctx, "  ");
-
-  //optional else
-  elseBlock = emitElseBlock(step.else, ctx, "if_empty.else");
-
-  //hoist first
-  if (hoist.length > 0) {
-
-    //outer lets
-    lines.push(hoist.trimEnd());
-
-  //end hoist
-  }
-
-  //emit if
-  lines.push("//if_empty " + pathName);
-  lines.push("if " + pathName + ".len() == 0 {");
-  lines.push(inner.trimEnd());
-
-  //else or close
-  if (elseBlock.length > 0) {
-
-    //else branch
-    lines.push(elseBlock);
-
-  } else {
-
-    //close if
-    lines.push("}");
-
-  //end else branch
-  }
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitIfEmptyStep
-}
-
-/*
- * @description emit if_failed: when agent result missing or unsuccessful, run then steps
- * @param step - if_failed step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitIfFailedStep(step, ctx) {
-
-  //variables
-  let pathName = ""; //result binding
-  let lines = []; //source lines
-  let inner = ""; //nested steps
-  let elseBlock = ""; //optional else
-  let hoist = ""; //pre-if lets for set
-
-  //result binding
-  pathName = assertIdent(step.path, "if_failed.path");
-
-  //must be known
-  if (!ctx.knownVars[pathName]) {
-
-    //unknown path
-    throw new Error("if_failed.path '" + pathName + "' is not a known binding");
-
-  //end path guard
-  }
-
-  //hoist set targets from then/else
-  hoist = hoistSetBindingsForStep(step, ctx);
-
-  //require then
-  assertBranchSteps(step.then, "if_failed.then");
-
-  //nested steps
-  inner = emitSteps(step.then, ctx, "  ");
-
-  //optional else
-  elseBlock = emitElseBlock(step.else, ctx, "if_failed.else");
-
-  //hoist first
-  if (hoist.length > 0) {
-
-    //outer lets
-    lines.push(hoist.trimEnd());
-
-  //end hoist
-  }
-
-  //emit guard
-  lines.push("//if_failed " + pathName);
-  lines.push("if " + pathName + " == () || !" + pathName + ".success {");
-  lines.push(inner.trimEnd());
-
-  //else or close
-  if (elseBlock.length > 0) {
-
-    //else branch
-    lines.push(elseBlock);
-
-  } else {
-
-    //close if
-    lines.push("}");
-
-  //end else branch
-  }
-
-  //joined source
-  return lines.join("\n") + "\n";
-
-//end emitIfFailedStep
-}
-
-/*
- * @description emit bind: copy a field path from an agent result into a new local
- * @param step - bind step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitBindStep(step, ctx) {
-
-  //variables
-  let asName = ""; //new local
-  let fromName = ""; //result binding
-  let field = ""; //output field
-  let lines = []; //source lines
-
-  //names
-  asName = assertIdent(step.as, "bind.as");
-  fromName = assertIdent(step.from, "bind.from");
-  field = assertIdent(step.field, "bind.field");
-
-  //require known from
-  if (!ctx.knownVars[fromName]) {
-
-    //unknown from
-    throw new Error("bind.from '" + fromName + "' is not a known binding");
-
-  //end from guard
-  }
-
-  //emit bind from output field
-  lines.push("//bind " + fromName + ".output." + field + " → " + asName);
-  lines.push("let " + asName + " = " + fromName + ".output." + field + ";");
-
-  //register
-  registerBinding(ctx, asName);
-
-  //joined
-  return lines.join("\n") + "\n";
-
-//end emitBindStep
-}
-
-/*
- * @description emit log step with template support
- * @param step - log step
- * @param ctx - compiler context
- * @returns Rhai source
- */
-function emitLogStep(step, ctx) {
-
-  //variables
-  let scope = null; //template scope
-  let build = ""; //prompt-style build for message
-  let lines = []; //source lines
-
-  //require message
-  if (typeof step.message !== "string" && !Array.isArray(step.message)) {
-
-    //bad message
-    throw new Error("log.message must be a string or array of strings");
-
-  //end message guard
-  }
-
-  //scope
-  scope = {
-    argsLocals: ctx.argsLocals, //args
-    knownVars: ctx.knownVars, //bindings
-    itemAs: null, //no item
-    indexAs: null, //no index
-  };
-
-  //build message into m
-  build = templateMod.emitPromptBuild("m", step.message, scope, "");
-
-  //log call
-  lines.push("//log progress");
-  lines.push(build.trimEnd());
-  lines.push("log(m);");
-
-  //joined
-  return lines.join("\n") + "\n";
-
-//end emitLogStep
-}
-
-/*
- * @description emit phase marker
- * @param step - phase step
- * @returns Rhai source
- */
-function emitPhaseStep(step) {
-
-  //require title
-  if (typeof step.title !== "string" || step.title.length === 0) {
-
-    //missing title
-    throw new Error("phase.title must be a non-empty string");
-
-  //end title guard
-  }
-
-  //phase call
-  return "//phase " + step.title + "\nphase(" + jsonToRhaiMod.emitRhaiString(step.title) + ");\n";
-
-//end emitPhaseStep
-}
-
-/*
- * @description emit pause or await_user
- * @param step - pause or await_user step
- * @returns Rhai source
- */
-function emitGateStep(step) {
-
-  //variables
-  let kind = ""; //pause kind
-  let message = ""; //user message
-  let fn = ""; //pause or await_user
-
-  //function name from op
-  fn = step.op === "await_user" ? "await_user" : "pause";
-
-  //kind default
-  kind = typeof step.kind === "string" ? step.kind : "verification";
-
-  //message required
-  if (typeof step.message !== "string" || step.message.length === 0) {
-
-    //missing message
-    throw new Error(fn + ".message must be a non-empty string");
-
-  //end message guard
-  }
-
-  //message value
-  message = step.message;
-
-  //gate call
-  return (
-    "//" + fn + "\n" +
-    fn + "(" +
-    jsonToRhaiMod.emitRhaiString(kind) +
-    ", " +
-    jsonToRhaiMod.emitRhaiString(message) +
-    ");\n"
-  );
-
-//end emitGateStep
-}
-
-/*
- * @description emit a list of steps with optional indent prefix on each line
- * @param steps - step array
- * @param ctx - compiler context
- * @param indent - prefix for each line
- * @returns Rhai source
- */
-function emitSteps(steps, ctx, indent) {
-
-  //variables
-  let i = 0; //step index
-  let step = null; //current step
-  let chunk = ""; //emitted step source
-  let parts = []; //chunks
-  let lines = null; //indented lines
-  let j = 0; //line index
-
-  //default indent
-  if (!indent) {
-
-    //no indent
-    indent = "";
-
-  //end default indent
-  }
-
-  //require array
-  if (!Array.isArray(steps)) {
-
-    //bad steps
-    throw new Error("steps must be an array");
+  //steps[] is the old step IR body
+  if (workflow.steps !== undefined) {
+
+    //reject steps
+    throw new Error(
+      "workflow.steps is not supported; use stations[] (flow-only authoring)"
+    );
 
   //end steps guard
   }
 
-  //walk steps
-  i = 0;
+  //phases come only from stations
+  if (workflow.phases !== undefined) {
 
-  //each step
-  while (i < steps.length) {
+    //reject hand-authored phases
+    throw new Error(
+      "workflow.phases is not supported; meta.phases are derived from stations[]"
+    );
 
-    //current step
-    step = steps[i];
-
-    //require op
-    if (!step || typeof step !== "object" || typeof step.op !== "string") {
-
-      //bad step
-      throw new Error("steps[" + i + "] must be an object with string op");
-
-    //end step guard
-    }
-
-    //dispatch on op
-    if (step.op === "phase") {
-
-      //phase marker
-      chunk = emitPhaseStep(step);
-
-    } else if (step.op === "log") {
-
-      //log line
-      chunk = emitLogStep(step, ctx);
-
-    } else if (step.op === "agent") {
-
-      //single agent
-      chunk = emitAgentStep(step, ctx);
-
-    } else if (step.op === "parallel") {
-
-      //fan-out
-      chunk = emitParallelStep(step, ctx);
-
-    } else if (step.op === "collect") {
-
-      //merge arrays
-      chunk = emitCollectStep(step, ctx);
-
-    } else if (step.op === "zip_filter") {
-
-      //verdict filter
-      chunk = emitZipFilterStep(step, ctx);
-
-    } else if (step.op === "bind") {
-
-      //field bind
-      chunk = emitBindStep(step, ctx);
-
-    } else if (step.op === "set") {
-
-      //assign value or unit to binding
-      chunk = emitSetStep(step, ctx);
-
-    } else if (step.op === "if") {
-
-      //structured if / else_if / else
-      chunk = emitIfStep(step, ctx);
-
-    } else if (step.op === "if_empty") {
-
-      //empty guard
-      chunk = emitIfEmptyStep(step, ctx);
-
-    } else if (step.op === "if_failed") {
-
-      //failure guard
-      chunk = emitIfFailedStep(step, ctx);
-
-    } else if (step.op === "complete") {
-
-      //complete with optional $ref bindings
-      chunk = emitCompleteStep(step, ctx);
-
-    } else if (step.op === "complete_from") {
-
-      //complete from binding
-      chunk = emitCompleteFromStep(step, ctx);
-
-    } else if (step.op === "pause" || step.op === "await_user") {
-
-      //human gate
-      chunk = emitGateStep(step);
-
-    } else {
-
-      //unknown op
-      throw new Error("steps[" + i + "]: unsupported op '" + step.op + "'");
-
-    //end op dispatch
-    }
-
-    //apply indent to each line when nested
-    if (indent.length > 0) {
-
-      //split chunk lines
-      lines = chunk.split("\n");
-
-      //rejoin with indent (preserve empty trailing)
-      j = 0;
-
-      //indent non-empty lines
-      while (j < lines.length) {
-
-        //indent content lines
-        if (lines[j].length > 0) {
-
-          //prefix indent
-          lines[j] = indent + lines[j];
-
-        //end indent one line
-        }
-
-        //next line
-        j += 1;
-
-      //end line indent walk
-      }
-
-      //rebuild chunk
-      chunk = lines.join("\n");
-
-    //end indent apply
-    }
-
-    //store chunk
-    parts.push(chunk);
-
-    //next step
-    i += 1;
-
-  //end step walk
+  //end phases guard
   }
 
-  //join steps with blank lines
-  return parts.join("\n");
-
-//end emitSteps
+//end assertFlowOnlyWorkflow
 }
 
 /*
- * @description compile a workflow object into Rhai source text
+ * @description compile a workflow object into Rhai source text (flow / stations only)
  * @param workflow - parsed workflow document
  * @param options - { base?: string, baseDir?: string } asset root with schemas/ and prompts/
- * @returns { name, rhai, loadedSchemas, base }
+ * @returns { name, rhai, loadedSchemas, base, scriptType }
  */
 function compileWorkflow(workflow, options) {
 
@@ -2531,15 +2529,18 @@ function compileWorkflow(workflow, options) {
   let baseDir = ""; //absolute asset base (schemas/ + prompts/)
   let loadedSchemas = null; //binding → schema object
   let argsPreamble = null; //args source + locals
-  let ctx = null; //step emit context
+  let ctx = null; //compile context
   let parts = []; //source sections
-  let stepsSource = ""; //body source
   let header = ""; //file header comment
   let rhai = ""; //full script
   let keywordSet = null; //reserved keywords
   let scanHits = null; //layer B findings
   let si = 0; //scan index
   let report = ""; //keyword error text
+  let stations = null; //normalized stations
+  let metaWorkflow = null; //workflow object for emitMeta
+  let bodySource = ""; //flow body
+  let promptRegistry = null; //workflow.prompts map or null
 
   //options normalize
   if (!options || typeof options !== "object") {
@@ -2574,18 +2575,27 @@ function compileWorkflow(workflow, options) {
 
   try {
 
+    //flow-only authoring surface
+    assertFlowOnlyWorkflow(workflow);
+
     //load schemas from {base}/schemas
     loadedSchemas = loadSchemas(workflow.schemas, baseDir);
 
     //args preamble
     argsPreamble = emitArgsPreamble(workflow.args);
 
-    //step context
+    //top-level prompt registry (optional; stations use binding names when set)
+    promptRegistry = normalizePromptRegistry(workflow.prompts);
+
+    //compile context
     ctx = {
       argsLocals: argsPreamble.argsLocals, //template args
-      knownVars: {}, //bindings introduced by steps
+      knownVars: {}, //unused in flow (kept for template API)
       declaredLets: {}, //names already introduced with let
       loadedSchemas: loadedSchemas, //schemas
+      payloadSchema: null, //optional payload
+      promptRegistry: promptRegistry, //binding → path or null
+      workflowArgs: workflow.args || null, //raw args def
       base: baseDir, //prompts + schema root
       keywordViolations: activeKeywordCtx.keywordViolations, //shared list
     };
@@ -2599,31 +2609,41 @@ function compileWorkflow(workflow, options) {
     //end forEach
     });
 
-    //require steps
-    if (!Array.isArray(workflow.steps) || workflow.steps.length === 0) {
-
-      //missing steps
-      throw new Error("workflow.steps must be a non-empty array");
-
-    //end steps guard
-    }
-
-    //file header
+    //file header: mark IR as build artifact (analysis only; not an edit surface)
     header =
-      "//generated by rhaiteous — do not hand-edit\n" +
-      "//source workflow JSON is the authoring surface; re-run the compiler after changes\n";
+      "// =============================================================================\n" +
+      "// BUILD ARTIFACT — generated by rhaiteous\n" +
+      "// Suitable for analysis and debugging only. Do not edit this file.\n" +
+      "// Authoring surface: workflow JSON (+ schemas + prompts). Recompile after changes.\n" +
+      "// Hand-edits will be overwritten on the next compile and are not supported.\n" +
+      "// scriptType: flow\n" +
+      "// =============================================================================\n";
+
+    //normalize stations
+    stations = normalizeStations(workflow.stations);
+
+    //station schemas[] must resolve against top-level workflow.schemas
+    assertStationSchemasResolved(stations, loadedSchemas);
+
+    //optional payload schema (file under schemas/, $ref inlined)
+    ctx.payloadSchema = loadPayloadSchema(workflow, baseDir);
+
+    //meta with derived phases
+    metaWorkflow = {
+      name: workflow.name, //name
+      description: workflow.description, //description
+      phases: phasesFromStations(stations), //from stations[]
+    };
+
+    //body: flow object + fns + driver
+    bodySource = emitFlowBody(stations, ctx);
 
     //assemble sections
     parts.push(header);
-    parts.push(emitMeta(workflow));
+    parts.push(emitMeta(metaWorkflow));
     parts.push(emitSchemaLocals(loadedSchemas));
     parts.push(argsPreamble.source);
-
-    //body steps
-    stepsSource = emitSteps(workflow.steps, ctx, "");
-
-    //append body
-    parts.push(stepsSource);
+    parts.push(bodySource);
 
     //full script
     rhai = parts.filter(function keepNonEmpty(section) {
@@ -2664,12 +2684,14 @@ function compileWorkflow(workflow, options) {
     //end keyword fail
     }
 
-    //return compile result
+    //return compile result (Rhai + human guide; both build products)
     return {
       name: workflow.name, //workflow name
       rhai: rhai, //full source
+      workflowMd: emitWorkflowMarkdown(workflow), //always workflow.md content
       loadedSchemas: loadedSchemas, //for tests/debug
       base: baseDir, //resolved asset base
+      scriptType: "flow", //flow-only product
     };
 
   } finally {
@@ -2698,6 +2720,10 @@ function compileWorkflowFile(workflowPath, options) {
   let result = null; //compile result
   let outPath = ""; //output rhai path
   let outDir = ""; //output directory
+  let mdPaths = null; //workflow.md destinations
+  let mi = 0; //md path index
+  let mdPath = ""; //one md path
+  let writtenMdPaths = []; //paths actually written
 
   //options normalize
   if (!options || typeof options !== "object") {
@@ -2736,6 +2762,9 @@ function compileWorkflowFile(workflowPath, options) {
   //end out path branch
   }
 
+  //human guide path(s): always named workflow.md (same compile cycle as Rhai)
+  mdPaths = resolveWorkflowMdPaths(absIn, outPath);
+
   //write when requested (default true)
   if (options.write !== false) {
 
@@ -2750,6 +2779,32 @@ function compileWorkflowFile(workflowPath, options) {
     //write utf-8 rhai
     nodeFs.writeFileSync(outPath, result.rhai, "utf8");
 
+    //write workflow.md beside authoring pack / pack-style IR
+    mi = 0;
+
+    //each destination
+    while (mi < mdPaths.length) {
+
+      //path
+      mdPath = mdPaths[mi];
+
+      //ensure dir
+      nodeFs.mkdirSync(nodePath.dirname(mdPath), {
+        recursive: true, //parents
+      });
+
+      //write guide
+      nodeFs.writeFileSync(mdPath, result.workflowMd, "utf8");
+
+      //record
+      writtenMdPaths.push(mdPath);
+
+      //next
+      mi += 1;
+
+    //end md write walk
+    }
+
   //end write branch
   }
 
@@ -2757,10 +2812,12 @@ function compileWorkflowFile(workflowPath, options) {
   return {
     name: result.name, //workflow name
     rhai: result.rhai, //source text
+    workflowMd: result.workflowMd, //guide source
     loadedSchemas: result.loadedSchemas, //schemas
     base: result.base, //resolved asset base
     inputPath: absIn, //input path
-    outputPath: outPath, //output path
+    outputPath: outPath, //rhai output path
+    workflowMdPaths: writtenMdPaths.length > 0 ? writtenMdPaths : mdPaths, //guide path(s)
     written: options.write !== false, //whether written
   };
 
@@ -2771,9 +2828,15 @@ function compileWorkflowFile(workflowPath, options) {
 export default {
   compileWorkflow: compileWorkflow,
   compileWorkflowFile: compileWorkflowFile,
+  emitWorkflowMarkdown: emitWorkflowMarkdown,
+  resolveWorkflowMdPaths: resolveWorkflowMdPaths,
   readJsonFile: readJsonFile,
   loadPromptFiles: loadPromptFiles,
+  normalizePromptRegistry: normalizePromptRegistry,
+  resolvePromptList: resolvePromptList,
   resolveBaseDir: resolveBaseDir,
+  resolveSchemasDir: resolveSchemasDir,
+  resolvePromptsDir: resolvePromptsDir,
   jsonToRhai: jsonToRhaiMod.jsonToRhai,
   assertWorkflowName: assertWorkflowName,
   assertIdent: assertIdent,

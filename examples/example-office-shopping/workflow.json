@@ -1,0 +1,87 @@
+{
+  "name": "example-office-shopping",
+  "description": "Example seed: twice-weekly office supply cycle (Intake → Inventory → Audit → Procurement → Purchasing).",
+  "payloadSchema": "schema.json",
+  "args": {
+    "requests_dir": "workflows/example-office-shopping/input",
+    "company_name": "Acme Office",
+    "cycle": "twice-weekly"
+  },
+  "schemas": {
+    "requests": "stations/shopping-requests.schema.json",
+    "items": "stations/shopping-items.schema.json",
+    "audit": "stations/shopping-audit.schema.json",
+    "vendor_pick": "stations/shopping-vendor-pick.schema.json",
+    "purchase_one": "stations/shopping-purchase-one.schema.json"
+  },
+  "prompts": {
+    "flow_common": "common.md",
+    "intake": "intake.md",
+    "inventory": "inventory.md",
+    "audit": "audit.md",
+    "procurement": "procurement.md",
+    "purchasing": "purchasing.md"
+  },
+  "stations": [
+    {
+      "name": "Intake",
+      "uiDescription": "collect and deposit requests from email, chat, forms",
+      "prompt": [
+        "flow_common",
+        "intake"
+      ],
+      "schemas": [
+        "requests"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Inventory",
+      "uiDescription": "compile specific items and quantities per request",
+      "prompt": [
+        "flow_common",
+        "inventory"
+      ],
+      "schemas": [
+        "items"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Audit",
+      "uiDescription": "challenge each line across validity facets",
+      "prompt": [
+        "flow_common",
+        "audit"
+      ],
+      "schemas": [
+        "audit"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Procurement",
+      "uiDescription": "select a vendor for each surviving item",
+      "prompt": [
+        "flow_common",
+        "procurement"
+      ],
+      "schemas": [
+        "vendor_pick"
+      ],
+      "capability_mode": "read-only"
+    },
+    {
+      "name": "Purchasing",
+      "uiDescription": "buy and record each transaction",
+      "prompt": [
+        "flow_common",
+        "purchasing"
+      ],
+      "schemas": [
+        "purchase_one"
+      ],
+      "capability_mode": "execute"
+    }
+  ]
+}
