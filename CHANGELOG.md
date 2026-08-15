@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-08-15
+
+### Added
+
+- **`rhaiteous init`**: creates host `./workflows/`, copies product seed packs (`example-*`) from the installed package, and adds a sandbox `workflows/` line to `.gitignore`
+- **`rhaiteous compile <pack-name>`**: compiles `./workflows/<name>/` to in-pack `workflow.rhai` + `workflow.md` and publishes `.grok/workflows/<name>.rhai`
+- Host flow after `npm install rhaiteous`: `npx rhaiteous init` then `npx rhaiteous compile example-office-shopping`
+
 ## [0.4.0] — 2026-08-15
 
 ### Added

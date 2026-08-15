@@ -63,8 +63,12 @@ From your **Grok project root**:
 
 ```bash
 npm install --save-dev rhaiteous
+npx rhaiteous init
+npx rhaiteous compile example-office-shopping
 npx rhaiteous --help
 ```
+
+`init` creates `./workflows/`, seeds `example-*` packs from the package, and adds a `workflows/` gitignore line. `compile` writes pack IR + `workflow.md` and `.grok/workflows/<name>.rhai`.
 
 Pin a version in CI/scripts when you want reproducible compiles:
 
