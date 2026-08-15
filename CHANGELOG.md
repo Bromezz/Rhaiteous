@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-15
+
 ### Added
 
 - **Seed packs under `examples/example-*`**: versioned pack layout (`workflow.json`, `schema.json`, `stations/`, `input/`, `output/`); product ids use the **`example-`** prefix
@@ -28,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Top-level `schemas` bindings are loaded with `$ref` inlining (not raw file parse only)
 - Flow envelope always includes `payload` (nullable object default when `payloadSchema` omitted)
 - Stations without `workflow.prompts` still accept legacy prompt **file paths**
-- **`args` defaults are flat**: the value after the key is the default (e.g. `"out_dir": "experiments/…/out"`). Nested `{ "default": … }` is rejected. Required remains `true` or `{ "required": true }`; optional-without-default remains `{}`
-- **Prompt sources use Markdown (`.md`)** under `{base}/prompts/`
+- **`args` defaults are flat**: the value after the key is the default (e.g. `"out_dir": "…"`). Nested `{ "default": … }` is rejected. Required remains `true` or `{ "required": true }`; optional-without-default remains `{}`
+- **Prompt sources use Markdown (`.md`)** under pack `stations/` or legacy `{base}/prompts/`
 
 ### Removed
 
@@ -39,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migrated
 
-- **office-shopping** example rewritten as a five-station flow with `shopping-payload.schema.json` and `prompts/stations/*.md`
+- **office-shopping** example rewritten as pack **`example-office-shopping`** (five-station flow)
 
 ## [0.3.1] — 2026-07-27
 
