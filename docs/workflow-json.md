@@ -57,13 +57,13 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`**. See [using-in-a-grok-
 {
   "name": "office-shopping",
   "description": "What this pipeline does",
-  "payloadSchema": "shopping-payload.schema.json",
+  "payloadSchema": "schema.json",
   "args": {
     "requests_dir": true,
     "company_name": "Acme Office"
   },
   "schemas": {
-    "requests": "shopping-requests.schema.json"
+    "intake": "stations/intake.schema.json"
   },
   "prompts": {
     "flow_common": "stations/common.md",

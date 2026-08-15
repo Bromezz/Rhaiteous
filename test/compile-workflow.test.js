@@ -63,12 +63,12 @@ nodeTest.test("compiles example-office-shopping pack as flow", function testShop
   nodeAssert.match(result.rhai, /let meta = #\{/);
   nodeAssert.match(result.rhai, /name: "example-office-shopping"/);
 
-  //station schemas loaded as locals + payload envelope
-  nodeAssert.match(result.rhai, /let requests_schema = #\{/);
-  nodeAssert.match(result.rhai, /let items_schema = #\{/);
+  //station schemas loaded as locals (one binding per station) + payload envelope
+  nodeAssert.match(result.rhai, /let intake_schema = #\{/);
+  nodeAssert.match(result.rhai, /let inventory_schema = #\{/);
   nodeAssert.match(result.rhai, /let audit_schema = #\{/);
-  nodeAssert.match(result.rhai, /let vendor_pick_schema = #\{/);
-  nodeAssert.match(result.rhai, /let purchase_one_schema = #\{/);
+  nodeAssert.match(result.rhai, /let procurement_schema = #\{/);
+  nodeAssert.match(result.rhai, /let purchasing_schema = #\{/);
   nodeAssert.match(result.rhai, /fn make_flow_schema/);
 
   //default requests_dir for host pack layout
@@ -122,6 +122,11 @@ nodeTest.test("compiles example-issues-birthday pack as flow", function testIssu
   nodeAssert.match(result.rhai, /fn Validation\(/);
   nodeAssert.match(result.rhai, /fn Presentation\(/);
   nodeAssert.match(result.rhai, /fn QA\(/);
+  nodeAssert.match(result.rhai, /let intake_schema = #\{/);
+  nodeAssert.match(result.rhai, /let formulation_schema = #\{/);
+  nodeAssert.match(result.rhai, /let validation_schema = #\{/);
+  nodeAssert.match(result.rhai, /let presentation_schema = #\{/);
+  nodeAssert.match(result.rhai, /let qa_schema = #\{/);
   nodeAssert.match(result.rhai, /===== \[formulation\.md\] =====/);
   nodeAssert.match(result.workflowMd, /\/workflow example-issues-birthday/);
 

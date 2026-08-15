@@ -1,10 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/schemas/shopping-items.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-office-shopping/stations/inventory.schema.json",
   "$comment": "Inventory station: concrete SKUs/items and quantities derived from deposited requests.",
   "title": "ShoppingItemsResult",
   "type": "object",
-  "required": ["items"],
+  "required": [
+    "items"
+  ],
   "properties": {
     "items": {
       "$comment": "Normalized line items for this twice-weekly cycle. Cap keeps audit fan-out bounded.",
@@ -13,7 +15,14 @@
       "items": {
         "$comment": "One buyable line. id must stay stable through Audit, Procurement, and Purchasing.",
         "type": "object",
-        "required": ["id", "name", "quantity", "unit", "request_ids", "evidence"],
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "unit",
+          "request_ids",
+          "evidence"
+        ],
         "properties": {
           "id": {
             "$comment": "Stable line id; office-shopping prompt uses {requestId}-item-N (e.g. req-001-item-1).",
@@ -38,14 +47,19 @@
           "request_ids": {
             "$comment": "Intake request ids that drove this line (merge duplicates here).",
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "evidence": {
             "$comment": "Citations back to deposited requests or policy docs.",
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["source", "quote"],
+              "required": [
+                "source",
+                "quote"
+              ],
               "properties": {
                 "source": {
                   "type": "string",

@@ -169,34 +169,29 @@ rhaiteous/
 
 ### Multiple external JSON Schemas
 
-Declare schemas by **name → path relative to `{base}/schemas`**:
+In a **pack**, declare schemas by **binding → path under the pack** (one schema per station is the convention):
 
 ```json
 {
+  "payloadSchema": "schema.json",
   "schemas": {
-    "requests": "shopping-requests.schema.json",
-    "items": "shopping-items.schema.json",
-    "audit": "shopping-audit.schema.json",
-    "vendor_pick": "shopping-vendor-pick.schema.json",
-    "purchase_one": "shopping-purchase-one.schema.json"
-  }
-}
-```
-
-Reference them from **stations** (guidance under **Additional Schemas**, and/or as `payloadSchema`):
-
-```json
-{
-  "payloadSchema": "shopping-payload.schema.json",
+    "intake": "stations/intake.schema.json",
+    "inventory": "stations/inventory.schema.json",
+    "audit": "stations/audit.schema.json",
+    "procurement": "stations/procurement.schema.json",
+    "purchasing": "stations/purchasing.schema.json"
+  },
   "stations": [
     {
       "name": "Intake",
       "prompt": ["flow_common", "intake"],
-      "schemas": ["requests"]
+      "schemas": ["intake"]
     }
   ]
 }
 ```
+
+Each station should list its own schema binding (even a permissive `additionalProperties: true` object). Schemas appear under **Additional Schemas** in the station prompt; the host-checked payload uses `payloadSchema`.
 
 ### Prompt files
 

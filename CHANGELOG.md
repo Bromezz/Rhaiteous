@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Example station schemas**: one schema per station, station-named files (`intake.schema.json`, …). Removed `shopping-*` filename prefixes. Issues pack now includes schemas for Intake, Formulation, Validation, Presentation, and QA.
+
 ## [0.4.1] — 2026-08-15
 
 ### Added

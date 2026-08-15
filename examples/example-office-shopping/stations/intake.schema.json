@@ -1,10 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/schemas/shopping-requests.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-office-shopping/stations/intake.schema.json",
   "$comment": "Intake station: every supply request gathered from email, chat, forms, etc., deposited into a structured catalog for the shopping cycle.",
   "title": "ShoppingRequestsResult",
   "type": "object",
-  "required": ["requests", "notes"],
+  "required": [
+    "requests",
+    "notes"
+  ],
   "properties": {
     "requests": {
       "$comment": "One entry per distinct request. Empty is allowed; the workflow short-circuits later if nothing arrived.",
@@ -12,7 +15,14 @@
       "items": {
         "$comment": "A single inbound request, re-posited with a stable id and source locator.",
         "type": "object",
-        "required": ["id", "channel", "requester", "summary", "body", "source"],
+        "required": [
+          "id",
+          "channel",
+          "requester",
+          "summary",
+          "body",
+          "source"
+        ],
         "properties": {
           "id": {
             "$comment": "Stable id for this cycle, e.g. req-001.",

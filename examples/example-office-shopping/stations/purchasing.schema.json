@@ -1,10 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/schemas/shopping-purchase-one.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-office-shopping/stations/purchasing.schema.json",
   "$comment": "Purchasing guidance: one transaction shape (transactions[] on payload).",
   "title": "ShoppingPurchaseOneResult",
   "type": "object",
-  "required": ["transactions"],
+  "required": [
+    "transactions"
+  ],
   "properties": {
     "transactions": {
       "$comment": "Single-element array: the purchase (or simulation) for this pick.",
@@ -23,18 +25,34 @@
           "notes"
         ],
         "properties": {
-          "id": { "type": "string" },
-          "item_id": { "type": "string" },
-          "vendor_name": { "type": "string" },
-          "quantity": { "type": "number" },
-          "amount": { "type": "number" },
-          "currency": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "vendor_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
           "status": {
             "$comment": "purchased | backordered | failed | simulated",
             "type": "string"
           },
-          "confirmation_ref": { "type": "string" },
-          "notes": { "type": "string" }
+          "confirmation_ref": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
         },
         "additionalProperties": false
       }

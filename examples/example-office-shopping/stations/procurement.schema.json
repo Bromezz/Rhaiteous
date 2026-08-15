@@ -1,10 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/schemas/shopping-vendor-pick.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-office-shopping/stations/procurement.schema.json",
   "$comment": "Procurement guidance: one vendor choice shape (picks[] or flattened picks on payload).",
   "title": "ShoppingVendorPickResult",
   "type": "object",
-  "required": ["picks"],
+  "required": [
+    "picks"
+  ],
   "properties": {
     "picks": {
       "$comment": "Always a single-element array for this shard (the item under review).",
@@ -13,25 +15,48 @@
       "maxItems": 1,
       "items": {
         "type": "object",
-        "required": ["item_id", "vendor_name", "fulfillment", "rationale", "evidence"],
+        "required": [
+          "item_id",
+          "vendor_name",
+          "fulfillment",
+          "rationale",
+          "evidence"
+        ],
         "properties": {
-          "item_id": { "type": "string" },
-          "vendor_name": { "type": "string" },
+          "item_id": {
+            "type": "string"
+          },
+          "vendor_name": {
+            "type": "string"
+          },
           "fulfillment": {
             "$comment": "URL, SKU, catalog id, or buy instruction.",
             "type": "string"
           },
-          "unit_price_estimate": { "type": "number" },
-          "currency": { "type": "string" },
-          "rationale": { "type": "string" },
+          "unit_price_estimate": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
           "evidence": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["source", "quote"],
+              "required": [
+                "source",
+                "quote"
+              ],
               "properties": {
-                "source": { "type": "string" },
-                "quote": { "type": "string" }
+                "source": {
+                  "type": "string"
+                },
+                "quote": {
+                  "type": "string"
+                }
               },
               "additionalProperties": false
             }

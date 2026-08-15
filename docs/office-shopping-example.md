@@ -1,82 +1,50 @@
 # Office-shopping example (flow)
 
-> **Canonical pack path (current):** [`examples/example-office-shopping/`](../examples/example-office-shopping/)  
-> Workflow name / Grok id: **`example-office-shopping`**.  
-> Layout below may still mention older shared-base paths; prefer the pack README and [examples/README.md](../examples/README.md).
+**Canonical pack:** [`examples/example-office-shopping/`](../examples/example-office-shopping/)  
+**Grok id:** `example-office-shopping`
 
-The package flagship example is a **five-station flow**: Intake → Inventory → Audit → Procurement → Purchasing.
+Five-station flow: Intake → Inventory → Audit → Procurement → Purchasing.
 
 ## Layout
 
 ```text
-examples/rhaiteous/                 # asset base (-b)
-  workflows/
-    office-shopping.workflow.json   # machine authoring
-    workflow.md                     # generated with the IR (do not edit)
-  schemas/
-    shopping-payload.schema.json    # flow.payload
-    shopping-requests.schema.json   # station guidance
-    shopping-items.schema.json
-    shopping-audit.schema.json
-    shopping-vendor-pick.schema.json
-    shopping-purchase-one.schema.json
-  prompts/stations/
+examples/example-office-shopping/
+  workflow.json
+  schema.json                 # flow.payload
+  stations/
     common.md
-    intake.md … purchasing.md
-examples/out/office-shopping.rhai   # compiled IR sample
+    intake.md + intake.schema.json
+    inventory.md + inventory.schema.json
+    audit.md + audit.schema.json
+    procurement.md + procurement.schema.json
+    purchasing.md + purchasing.schema.json
+  input/
+  output/
 ```
 
-Human guide is **`workflow.md`**, written whenever you compile (same cycle as the `.rhai`).
+Each station has its **own** schema file (station-named, no product-prefix clutter). `workflow.md` / `workflow.rhai` are compile products.
 
-## Compile
+## Compile / run
 
 ```bash
-npx rhaiteous ./examples/rhaiteous/workflows/office-shopping.workflow.json \
-  -b ./examples/rhaiteous \
-  -o ./examples/out/office-shopping.rhai
+npx rhaiteous init   # in a host project — or compile the pack in this repo:
+npx rhaiteous ./examples/example-office-shopping/workflow.json \
+  -b ./examples/example-office-shopping \
+  -o ./examples/example-office-shopping/workflow.rhai
 ```
-
-## Run (Grok)
 
 ```text
-/workflow office-shopping {"requests_dir":"./inbox/requests","company_name":"Acme Office"}
+/workflow example-office-shopping {"requests_dir":"workflows/example-office-shopping/input"}
 ```
-
-## Args
-
-| Arg | Role |
-|-----|------|
-| `requests_dir` | **Required** root for request sources |
-| `company_name` | Default `"Acme Office"` |
-| `cycle` | Default `"twice-weekly"` |
 
 ## Stations
 
-| Station | Role | Capability |
-|---------|------|------------|
-| **Intake** | Deposit requests into `flow.payload.requests`; early-stop if empty | read-only |
-| **Inventory** | Expand requests → `items` | read-only |
-| **Audit** | Verdicts → `survivors` / `dropped_items` | read-only |
-| **Procurement** | Vendor picks for survivors | read-only |
-| **Purchasing** | Transactions (real or simulated) | **execute** |
+| Station | Schema | Capability |
+|---------|--------|------------|
+| Intake | `stations/intake.schema.json` | read-only |
+| Inventory | `stations/inventory.schema.json` | read-only |
+| Audit | `stations/audit.schema.json` | read-only |
+| Procurement | `stations/procurement.schema.json` | read-only |
+| Purchasing | `stations/purchasing.schema.json` | execute |
 
-Each station receives shared `common.md` + duty prompt, optional **Additional Schemas** guidance, and **Workflow args (JSON)**. Host-checked shape is the **flow envelope** + `payloadSchema` (`shopping-payload.schema.json`).
-
-## Payload (shared state)
-
-Stations own slices of `flow.payload`:
-
-- `requests`, `items`, `survivors`, `dropped_items`, `audit_verdicts`, `vendor_picks`, `transactions`
-- `cycle_status`, `summary`
-
-Empty intake / inventory / audit-none-passed may set `flow.next` to null to end early.
-
-## What the compiler emits
-
-- `meta.phases` from station names / `uiDescription`
-- Schema locals for top-level `schemas` bindings
-- Args preamble + `workflow_args_json`
-- `fn Intake` … `fn Purchasing` + `while flow.next` driver
-- `complete(#{ flow, flow_json })`
-
-See [workflow-json.md](./workflow-json.md) for the full authoring reference.
+See [examples/README.md](../examples/README.md) and [workflow-json.md](./workflow-json.md).

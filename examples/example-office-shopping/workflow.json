@@ -8,11 +8,11 @@
     "cycle": "twice-weekly"
   },
   "schemas": {
-    "requests": "stations/shopping-requests.schema.json",
-    "items": "stations/shopping-items.schema.json",
-    "audit": "stations/shopping-audit.schema.json",
-    "vendor_pick": "stations/shopping-vendor-pick.schema.json",
-    "purchase_one": "stations/shopping-purchase-one.schema.json"
+    "intake": "stations/intake.schema.json",
+    "inventory": "stations/inventory.schema.json",
+    "audit": "stations/audit.schema.json",
+    "procurement": "stations/procurement.schema.json",
+    "purchasing": "stations/purchasing.schema.json"
   },
   "prompts": {
     "flow_common": "common.md",
@@ -31,7 +31,7 @@
         "intake"
       ],
       "schemas": [
-        "requests"
+        "intake"
       ],
       "capability_mode": "read-only"
     },
@@ -43,7 +43,7 @@
         "inventory"
       ],
       "schemas": [
-        "items"
+        "inventory"
       ],
       "capability_mode": "read-only"
     },
@@ -67,7 +67,7 @@
         "procurement"
       ],
       "schemas": [
-        "vendor_pick"
+        "procurement"
       ],
       "capability_mode": "read-only"
     },
@@ -79,7 +79,7 @@
         "purchasing"
       ],
       "schemas": [
-        "purchase_one"
+        "purchasing"
       ],
       "capability_mode": "execute"
     }

@@ -146,15 +146,16 @@ Minimal shape of a step that uses a schema + prompt file:
   "op": "agent",
   "as": "intake",
   "output_schema": "requests",
-  "prompt": ["shopping-intake.md"]
+  "prompt": ["intake"],
+  "schemas": ["intake"]
 }
 ```
 
 | Asset | Example path under `{base}` |
 |-------|-----------------------------|
 | Workflow | `workflows/office-shopping.workflow.json` |
-| Schemas | `schemas/shopping-requests.schema.json`, … |
-| Prompts | `prompts/shopping-intake.md`, … |
+| Schemas | pack `schema.json` + one `stations/<station>.schema.json` per station |
+| Prompts | pack `stations/*.md` |
 
 Use `$comment` freely in schema files. Dialect reference: [workflow-json.md](./workflow-json.md).
 

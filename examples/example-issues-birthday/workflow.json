@@ -20,7 +20,11 @@
     "report_title": "Birthday planning issues"
   },
   "schemas": {
-    "formulation_state": "stations/formulation-state.schema.json"
+    "intake": "stations/intake.schema.json",
+    "formulation": "stations/formulation.schema.json",
+    "validation": "stations/validation.schema.json",
+    "presentation": "stations/presentation.schema.json",
+    "qa": "stations/qa.schema.json"
   },
   "prompts": {
     "flow_common": "common.md",
@@ -38,7 +42,10 @@
         "flow_common",
         "intake"
       ],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "schemas": [
+        "intake"
+      ]
     },
     {
       "name": "Formulation",
@@ -48,7 +55,7 @@
         "formulation"
       ],
       "schemas": [
-        "formulation_state"
+        "formulation"
       ],
       "capability_mode": "read-only"
     },
@@ -59,7 +66,10 @@
         "flow_common",
         "validation"
       ],
-      "capability_mode": "read-only"
+      "capability_mode": "read-only",
+      "schemas": [
+        "validation"
+      ]
     },
     {
       "name": "Presentation",
@@ -68,7 +78,10 @@
         "flow_common",
         "presentation"
       ],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "schemas": [
+        "presentation"
+      ]
     },
     {
       "name": "QA",
@@ -77,7 +90,10 @@
         "flow_common",
         "qa"
       ],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "schemas": [
+        "qa"
+      ]
     }
   ]
 }

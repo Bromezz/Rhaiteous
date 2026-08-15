@@ -17,10 +17,12 @@ Product demo workflows, **versioned in git** under this directory.
 examples/example-<name>/
   workflow.json      # authoring
   schema.json        # payload schema
-  stations/          # prompts (.md) + station schemas
+  stations/          # one .md + one .schema.json per station (station-named)
   input/             # sample sources
   output/            # runtime (empty in git)
 ```
+
+- **Every station has its own schema** under `stations/` (e.g. `intake.schema.json`). If there is little structure to enforce, use an open object (`additionalProperties: true`). Do not prefix schema files with the product name (`shopping-…`).
 
 ## npm packaging (Option B)
 

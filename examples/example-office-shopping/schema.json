@@ -18,44 +18,44 @@
   "additionalProperties": false,
   "properties": {
     "requests": {
-      "$ref": "stations/shopping-requests.schema.json#/properties/requests"
+      "$ref": "stations/intake.schema.json#/properties/requests"
     },
     "items": {
-      "$ref": "stations/shopping-items.schema.json#/properties/items"
+      "$ref": "stations/inventory.schema.json#/properties/items"
     },
     "survivors": {
       "type": "array",
       "description": "Line items that passed Audit (real=true with evidence).",
       "items": {
-        "$ref": "stations/shopping-items.schema.json#/properties/items/items"
+        "$ref": "stations/inventory.schema.json#/properties/items/items"
       }
     },
     "dropped_items": {
       "type": "array",
       "description": "Line items rejected by Audit.",
       "items": {
-        "$ref": "stations/shopping-items.schema.json#/properties/items/items"
+        "$ref": "stations/inventory.schema.json#/properties/items/items"
       }
     },
     "audit_verdicts": {
       "type": "array",
       "description": "Per-item audit results aligned with Inventory items.",
       "items": {
-        "$ref": "stations/shopping-audit.schema.json"
+        "$ref": "stations/audit.schema.json"
       }
     },
     "vendor_picks": {
       "type": "array",
       "description": "Flattened vendor picks for surviving items.",
       "items": {
-        "$ref": "stations/shopping-vendor-pick.schema.json#/properties/picks/items"
+        "$ref": "stations/procurement.schema.json#/properties/picks/items"
       }
     },
     "transactions": {
       "type": "array",
       "description": "Purchase records from Purchasing.",
       "items": {
-        "$ref": "stations/shopping-purchase-one.schema.json#/properties/transactions/items"
+        "$ref": "stations/purchasing.schema.json#/properties/transactions/items"
       }
     },
     "cycle_status": {

@@ -37,19 +37,8 @@ ensureDir(nodePath.join(shopPack, "stations"));
 ensureDir(nodePath.join(shopPack, "input"));
 ensureDir(nodePath.join(shopPack, "output"));
 
-const shopSchemas = [
-  "shopping-requests.schema.json",
-  "shopping-items.schema.json",
-  "shopping-audit.schema.json",
-  "shopping-vendor-pick.schema.json",
-  "shopping-purchase-one.schema.json",
-];
-for (const f of shopSchemas) {
-  copyFile(
-    nodePath.join(shopLegacy, "schemas", f),
-    nodePath.join(shopPack, "stations", f)
-  );
-}
+// Prefer already-normalized station schemas under the pack when present.
+// Legacy monorepo shopping-* names are no longer used.
 for (const f of [
   "common.md",
   "intake.md",
