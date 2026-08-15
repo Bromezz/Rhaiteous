@@ -22,7 +22,7 @@ const shoppingPack = nodePath.join(
   "example-office-shopping"
 );
 const shoppingPath = nodePath.join(shoppingPack, "workflow.json");
-const issuesPack = nodePath.join(repoRoot, "examples", "example-issues-birthday");
+const issuesPack = nodePath.join(repoRoot, "examples", "example-birthday-issues");
 const issuesPath = nodePath.join(issuesPack, "workflow.json");
 
 //flagship pack example
@@ -105,7 +105,7 @@ nodeTest.test("compiles example-office-shopping pack as flow", function testShop
 });
 
 //issues birthday pack (curated-corpus flow)
-nodeTest.test("compiles example-issues-birthday pack as flow", function testIssues() {
+nodeTest.test("compiles example-birthday-issues pack as flow", function testIssues() {
 
   //variables
   let workflow = null; //doc
@@ -116,7 +116,7 @@ nodeTest.test("compiles example-issues-birthday pack as flow", function testIssu
     base: issuesPack,
   });
 
-  nodeAssert.equal(result.name, "example-issues-birthday");
+  nodeAssert.equal(result.name, "example-birthday-issues");
   nodeAssert.match(result.rhai, /fn Intake\(/);
   nodeAssert.match(result.rhai, /fn Formulation\(/);
   nodeAssert.match(result.rhai, /fn Validation\(/);
@@ -128,7 +128,7 @@ nodeTest.test("compiles example-issues-birthday pack as flow", function testIssu
   nodeAssert.match(result.rhai, /let presentation_schema = #\{/);
   nodeAssert.match(result.rhai, /let qa_schema = #\{/);
   nodeAssert.match(result.rhai, /===== \[formulation\.md\] =====/);
-  nodeAssert.match(result.workflowMd, /\/workflow example-issues-birthday/);
+  nodeAssert.match(result.workflowMd, /\/workflow example-birthday-issues/);
 
 //end testIssues
 });
@@ -621,7 +621,7 @@ nodeTest.test("binds args from flat default values", function testArgsFlatDefaul
         name: "args-flat", //name
         description: "flat args", //desc
         args: {
-          out_dir: "workflows/example-issues-birthday/output", //default
+          out_dir: "workflows/example-birthday-issues/output", //default
           requests_dir: true, //required
         },
         stations: [{ name: "A", prompt: ["a.md"] }],
@@ -631,7 +631,7 @@ nodeTest.test("binds args from flat default values", function testArgsFlatDefaul
 
     nodeAssert.match(
       result.rhai,
-      /let out_dir = if args == \(\) \|\| args\.out_dir == \(\) \{ "workflows\/example-issues-birthday\/output" \} else \{ args\.out_dir \};/
+      /let out_dir = if args == \(\) \|\| args\.out_dir == \(\) \{ "workflows\/example-birthday-issues\/output" \} else \{ args\.out_dir \};/
     );
     nodeAssert.match(result.rhai, /Pass args\.requests_dir/);
 

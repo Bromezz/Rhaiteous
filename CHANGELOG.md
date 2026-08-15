@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Seed packs under `examples/example-*`**: versioned pack layout (`workflow.json`, `schema.json`, `stations/`, `input/`, `output/`); product ids use the **`example-`** prefix
 - **Option B npm map**: `prepack` copies `examples/example-*` → `workflows/example-*` for the tarball (`files` includes `workflows/`); `postpack` cleans the map; root `workflows/` is gitignored
-- **example-office-shopping** and **example-issues-birthday** seed packs
+- **example-office-shopping** and **example-birthday-issues** seed packs
 - **Generated `.rhai` BUILD ARTIFACT banner**: every compile opens with a clear header that the file is for analysis only, not editing; authoring surface remains JSON + schemas + prompts
 - **Generated `workflow.md`**: every compile emits a human guide **always named `workflow.md`** in the same cycle as the Rhai IR (purpose, Grok invocation + args, stations). Written beside the authoring JSON and beside the IR when `-o …/workflow.rhai`. Build artifact — do not hand-edit.
 - **Pack-aware asset base**: if `{base}/schemas` or `{base}/prompts` is missing, resolve schemas under `{base}` and prompts under `{base}/stations/` (workflow pack layout)

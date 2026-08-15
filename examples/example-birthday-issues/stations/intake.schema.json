@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/packs/example-issues-birthday/stations/intake.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-birthday-issues/stations/intake.schema.json",
   "title": "IntakeStationGuidance",
   "description": "Intake station guidance.",
   "type": "object",

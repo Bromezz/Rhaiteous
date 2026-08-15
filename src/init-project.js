@@ -51,7 +51,7 @@ function copyDir(src, dest) {
 
     } else if (e.isFile()) {
 
-      //skip compile products in seeds
+      //skip compile products in seeds (keep human README.md)
       if (e.name === "workflow.rhai" || e.name === "workflow.md") {
 
         //next

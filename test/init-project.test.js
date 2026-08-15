@@ -25,7 +25,7 @@ function rmrf(p) {
 nodeTest.test("resolveSeedCatalog finds example-* packs", function testCatalog() {
   const cat = initMod.resolveSeedCatalog();
   nodeAssert.ok(cat.seedIds.includes("example-office-shopping"));
-  nodeAssert.ok(cat.seedIds.includes("example-issues-birthday"));
+  nodeAssert.ok(cat.seedIds.includes("example-birthday-issues"));
   nodeAssert.ok(cat.seedIds.every(function p(id) {
     return id.startsWith("example-");
   }));
@@ -47,7 +47,7 @@ nodeTest.test("initProject creates workflows/ and seeds example packs", function
     );
     nodeAssert.ok(
       nodeFs.existsSync(
-        nodePath.join(host, "workflows", "example-issues-birthday", "workflow.json")
+        nodePath.join(host, "workflows", "example-birthday-issues", "workflow.json")
       )
     );
     nodeAssert.ok(nodeFs.existsSync(nodePath.join(host, ".gitignore")));

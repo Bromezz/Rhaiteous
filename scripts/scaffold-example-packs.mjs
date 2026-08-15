@@ -140,9 +140,9 @@ if (!nodeFs.existsSync(sampleReq)) {
 }
 writeText(nodePath.join(shopPack, "output", ".gitkeep"), "");
 
-// --- example-issues-birthday ---
+// --- example-birthday-issues ---
 const issuesSrc = nodePath.join(root, "experiments", "fulltest2");
-const issuesPack = nodePath.join(root, "examples", "example-issues-birthday");
+const issuesPack = nodePath.join(root, "examples", "example-birthday-issues");
 ensureDir(nodePath.join(issuesPack, "stations"));
 ensureDir(nodePath.join(issuesPack, "input"));
 ensureDir(nodePath.join(issuesPack, "output"));
@@ -155,7 +155,7 @@ const issuesPayloadPath = nodePath.join(
 if (!nodeFs.existsSync(issuesPayloadPath)) {
   console.error(
     "missing experiments/fulltest2 (needed once to seed issues example). " +
-      "Create examples/example-issues-birthday manually if experiments/ is gone."
+      "Create examples/example-birthday-issues manually if experiments/ is gone."
   );
   process.exit(1);
 }
@@ -164,7 +164,7 @@ const issuesPayload = JSON.parse(
   nodeFs.readFileSync(issuesPayloadPath, "utf8")
 );
 issuesPayload.$id =
-  "https://rhaiteous.local/packs/example-issues-birthday/schema.json";
+  "https://rhaiteous.local/packs/example-birthday-issues/schema.json";
 writeJson(nodePath.join(issuesPack, "schema.json"), issuesPayload);
 
 copyFile(
@@ -196,7 +196,7 @@ copyFile(
 );
 
 writeJson(nodePath.join(issuesPack, "workflow.json"), {
-  name: "example-issues-birthday",
+  name: "example-birthday-issues",
   description:
     "Example seed: source-agnostic issues mining (Intake curated corpus → Formulation ⇄ Validation → Presentation → QA) over a birthday-planning fixture.",
   payloadSchema: "schema.json",
@@ -205,17 +205,17 @@ writeJson(nodePath.join(issuesPack, "workflow.json"), {
       {
         type: "file",
         source:
-          "workflows/example-issues-birthday/input/birthday-party-discussion.md",
+          "workflows/example-birthday-issues/input/birthday-party-discussion.md",
       },
       {
         type: "url",
         source: "https://www.wikihow.com/Plan-a-Birthday-Party",
       },
     ],
-    out_dir: "workflows/example-issues-birthday/output",
+    out_dir: "workflows/example-birthday-issues/output",
     curated: null,
-    flow_json_name: "example-issues-birthday-flow.json",
-    issues_md_name: "example-issues-birthday-issues.md",
+    flow_json_name: "example-birthday-issues-flow.json",
+    issues_md_name: "example-birthday-issues-issues.md",
     report_title: "Birthday planning issues",
   },
   schemas: {

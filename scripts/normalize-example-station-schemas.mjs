@@ -93,10 +93,10 @@ shopWf.stations = shopWf.stations.map(function mapSt(st) {
 });
 writeJson(path.join(shop, "workflow.json"), shopWf);
 
-// --- example-issues-birthday ---
-const issues = "examples/example-issues-birthday";
+// --- example-birthday-issues ---
+const issues = "examples/example-birthday-issues";
 const issuesSt = path.join(issues, "stations");
-const packId = "example-issues-birthday";
+const packId = "example-birthday-issues";
 
 // rename formulation-state → formulation if present
 const oldForm = path.join(issuesSt, "formulation-state.schema.json");

@@ -237,7 +237,7 @@ Product demos are **workflow packs** under [`examples/`](./examples/). Names alw
 | Pack | Grok id | What it shows |
 |------|---------|----------------|
 | [`example-office-shopping/`](./examples/example-office-shopping/) | `example-office-shopping` | Intake → Inventory → Audit → Procurement → Purchasing |
-| [`example-issues-birthday/`](./examples/example-issues-birthday/) | `example-issues-birthday` | Curated corpus + Formulation ⇄ Validation → Presentation → QA |
+| [`example-birthday-issues/`](./examples/example-birthday-issues/) | `example-birthday-issues` | Curated corpus + Formulation ⇄ Validation → Presentation → QA |
 
 ```text
 examples/example-office-shopping/
@@ -305,7 +305,7 @@ scripts/
   clean-workflows-map.mjs         # postpack cleanup
 examples/
   example-office-shopping/  # seed packs (git; example- prefix)
-  example-issues-birthday/
+  example-birthday-issues/
 workflows/                  # generated at prepack only (gitignored; npm ships this)
 test/                       node:test suite
 docs/                       Extended documentation

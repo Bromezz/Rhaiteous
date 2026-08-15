@@ -4,8 +4,10 @@ Product demo workflows, **versioned in git** under this directory.
 
 | Pack directory | Workflow `name` / Grok id | Role |
 |----------------|---------------------------|------|
-| [`example-office-shopping/`](./example-office-shopping/) | `example-office-shopping` | Linear multi-station supply cycle |
-| [`example-issues-birthday/`](./example-issues-birthday/) | `example-issues-birthday` | Issues mining + curated corpus (birthday fixture) |
+| [`example-office-shopping/`](./example-office-shopping/) | `example-office-shopping` | **List development** — requests → challenged shopping list → buy |
+| [`example-birthday-issues/`](./example-birthday-issues/) | `example-birthday-issues` | **Issue surfacing** — curated corpus → issues ↔ challenge → report |
+
+Each pack has a conceptual **`README.md`** (what the workflow is *for*). Generated **`workflow.md`** is the technical compile guide—not a substitute for the README.
 
 ## Conventions
 
@@ -51,7 +53,7 @@ After compiling and publishing IR to `.grok/workflows/<name>.rhai`:
 ```text
 /workflow example-office-shopping {"requests_dir":"workflows/example-office-shopping/input"}
 
-/workflow example-issues-birthday {}
+/workflow example-birthday-issues {}
 ```
 
 In a real host project, packs live under **`workflows/`** (not `examples/`). Paths in default args assume that host layout after init.

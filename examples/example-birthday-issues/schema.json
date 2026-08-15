@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/packs/example-issues-birthday/schema.json",
+  "$id": "https://rhaiteous.local/packs/example-birthday-issues/schema.json",
   "title": "IssuesPayload",
   "description": "Workflow payload: source corpus locations, curated Markdown path, and issues list as peer fields (for flow.payload when merged into the flow envelope).",
   "type": "object",

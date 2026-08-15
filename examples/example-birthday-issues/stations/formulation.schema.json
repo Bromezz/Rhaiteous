@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rhaiteous.local/packs/example-issues-birthday/stations/formulation.schema.json",
+  "$id": "https://rhaiteous.local/packs/example-birthday-issues/stations/formulation.schema.json",
   "title": "FormulationStationState",
   "description": "Best-effort shape for flow.state.Formulation (not host-enforced beyond guidance in the station prompt).",
   "type": "object",
