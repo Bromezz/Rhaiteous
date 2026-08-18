@@ -2005,7 +2005,9 @@ function emitMakeFlowSchemaFn(payloadSchema) {
 }
 
 /*
- * @description emit shared station_prompt + run_station helpers for flow scripts
+ * @description emit shared station_prompt + usage bookkeeping + run_station helpers
+ * Host agent() returns tokens_used and duration_ms; wrapper records them on flow.state
+ * (agents do not maintain these fields).
  * @returns Rhai source
  */
 function emitFlowStationHelpers() {
@@ -2028,7 +2030,9 @@ function emitFlowStationHelpers() {
     "    p += \"5. You may set flow.msg for the next station, or leave it null.\\n\";\n" +
     "    p += \"6. Preserve flow.stations, flow.payload, prior log entries, and other stations' state " +
     "unless station-specific rules update payload.\\n\";\n" +
-    "    p += \"7. Return the complete modified flow object as your only structured result.\\n\";\n" +
+    "    p += \"7. Do not clear or rewrite flow.state.tokens, flow.state.elapsed, flow.state.token_total, \";\n" +
+    "    p += \"flow.state.elapsed_total, or flow.state.station_run — the orchestrator owns those.\\n\";\n" +
+    "    p += \"8. Return the complete modified flow object as your only structured result.\\n\";\n" +
     "    if extra != () && extra != \"\" {\n" +
     "        p += \"\\nSTATION-SPECIFIC INSTRUCTIONS:\\n\";\n" +
     "        p += extra;\n" +
@@ -2039,18 +2043,66 @@ function emitFlowStationHelpers() {
     "    p\n" +
     "}\n" +
     "\n" +
-    "fn run_station(station_name, flow, extra) {\n" +
-    "    phase(station_name);\n" +
-    "    flow.current = station_name;\n" +
-    "    let output = agent(\n" +
-    "        station_prompt(station_name, flow, extra),\n" +
-    "        #{\n" +
-    "            label: station_name,\n" +
-    "            capability_mode: \"read-only\",\n" +
-    "            output_schema: make_flow_schema(),\n" +
+    "//usage / visit bookkeeping on flow.state (orchestrator-owned; not agent-maintained)\n" +
+    "fn ensure_usage_state(flow) {\n" +
+    "    if flow.state == () {\n" +
+    "        flow.state = #{};\n" +
+    "    }\n" +
+    "    if flow.state.tokens == () {\n" +
+    "        flow.state.tokens = [];\n" +
+    "    }\n" +
+    "    if flow.state.elapsed == () {\n" +
+    "        flow.state.elapsed = [];\n" +
+    "    }\n" +
+    "    if flow.state.token_total == () {\n" +
+    "        flow.state.token_total = 0;\n" +
+    "    }\n" +
+    "    if flow.state.elapsed_total == () {\n" +
+    "        flow.state.elapsed_total = 0;\n" +
+    "    }\n" +
+    "    if flow.state.station_run == () {\n" +
+    "        flow.state.station_run = #{};\n" +
+    "    }\n" +
+    "    flow\n" +
+    "}\n" +
+    "\n" +
+    "fn begin_station_visit(flow, station_name) {\n" +
+    "    flow = ensure_usage_state(flow);\n" +
+    "    let n = flow.state.station_run[station_name];\n" +
+    "    if n == () {\n" +
+    "        n = 0;\n" +
+    "    }\n" +
+    "    flow.state.station_run[station_name] = n + 1;\n" +
+    "    flow\n" +
+    "}\n" +
+    "\n" +
+    "fn record_usage_from_agent(flow, station_name, output) {\n" +
+    "    flow = ensure_usage_state(flow);\n" +
+    "    let tok = 0;\n" +
+    "    let el = 0;\n" +
+    "    if output != () {\n" +
+    "        if output.tokens_used != () {\n" +
+    "            tok = output.tokens_used;\n" +
     "        }\n" +
-    "    );\n" +
+    "        if output.duration_ms != () {\n" +
+    "            el = output.duration_ms;\n" +
+    "        }\n" +
+    "    }\n" +
+    "    let tok_entry = #{};\n" +
+    "    tok_entry[station_name] = tok;\n" +
+    "    flow.state.tokens.push(tok_entry);\n" +
+    "    let el_entry = #{};\n" +
+    "    el_entry[station_name] = el;\n" +
+    "    flow.state.elapsed.push(el_entry);\n" +
+    "    flow.state.token_total = flow.state.token_total + tok;\n" +
+    "    flow.state.elapsed_total = flow.state.elapsed_total + el;\n" +
+    "    flow\n" +
+    "}\n" +
+    "\n" +
+    "fn apply_agent_result(station_name, flow_before, output) {\n" +
     "    if output == () || !output.success || output.output == () {\n" +
+    "        let flow = flow_before;\n" +
+    "        flow = record_usage_from_agent(flow, station_name, output);\n" +
     "        flow.next = ();\n" +
     "        flow.msg = \"Station agent failed: \" + station_name;\n" +
     "        flow.log.push(#{\n" +
@@ -2059,7 +2111,30 @@ function emitFlowStationHelpers() {
     "        });\n" +
     "        return flow;\n" +
     "    }\n" +
-    "    output.output\n" +
+    "    let flow = output.output;\n" +
+    "    flow = ensure_usage_state(flow);\n" +
+    "    flow.state.tokens = flow_before.state.tokens;\n" +
+    "    flow.state.elapsed = flow_before.state.elapsed;\n" +
+    "    flow.state.token_total = flow_before.state.token_total;\n" +
+    "    flow.state.elapsed_total = flow_before.state.elapsed_total;\n" +
+    "    flow.state.station_run = flow_before.state.station_run;\n" +
+    "    flow = record_usage_from_agent(flow, station_name, output);\n" +
+    "    flow\n" +
+    "}\n" +
+    "\n" +
+    "fn run_station(station_name, flow, extra) {\n" +
+    "    phase(station_name);\n" +
+    "    flow.current = station_name;\n" +
+    "    flow = begin_station_visit(flow, station_name);\n" +
+    "    let output = agent(\n" +
+    "        station_prompt(station_name, flow, extra),\n" +
+    "        #{\n" +
+    "            label: station_name,\n" +
+    "            capability_mode: \"read-only\",\n" +
+    "            output_schema: make_flow_schema(),\n" +
+    "        }\n" +
+    "    );\n" +
+    "    apply_agent_result(station_name, flow, output)\n" +
     "}\n"
   );
 
@@ -2259,9 +2334,14 @@ function emitStationFunction(station, ctx) {
     typeof station.label === "string"
   ) {
 
-    //custom agent opts path
+    //custom agent opts path (same usage bookkeeping as run_station)
     lines.push("    phase(" + jsonToRhaiMod.emitRhaiString(name) + ");");
     lines.push("    flow.current = " + jsonToRhaiMod.emitRhaiString(name) + ";");
+    lines.push(
+      "    flow = begin_station_visit(flow, " +
+      jsonToRhaiMod.emitRhaiString(name) +
+      ");"
+    );
     lines.push("    let output = agent(");
     lines.push("        station_prompt(" + jsonToRhaiMod.emitRhaiString(name) + ", flow, extra),");
     lines.push("        #{");
@@ -2315,20 +2395,11 @@ function emitStationFunction(station, ctx) {
     lines.push("            output_schema: make_flow_schema(),");
     lines.push("        }");
     lines.push("    );");
-    lines.push("    if output == () || !output.success || output.output == () {");
-    lines.push("        flow.next = ();");
     lines.push(
-      "        flow.msg = \"Station agent failed: \" + " +
+      "    apply_agent_result(" +
       jsonToRhaiMod.emitRhaiString(name) +
-      ";"
+      ", flow, output)"
     );
-    lines.push("        flow.log.push(#{");
-    lines.push("            station: " + jsonToRhaiMod.emitRhaiString(name) + ",");
-    lines.push("            msg: \"ORCHESTRATOR: agent failed; clearing next\",");
-    lines.push("        });");
-    lines.push("        return flow;");
-    lines.push("    }");
-    lines.push("    output.output");
 
   } else {
 
@@ -2398,7 +2469,13 @@ function emitFlowBody(stations, ctx) {
   parts.push("    current: (),");
   parts.push("    next: (),");
   parts.push("    msg: (),");
-  parts.push("    state: #{},");
+  parts.push("    state: #{");
+  parts.push("        tokens: [],");
+  parts.push("        elapsed: [],");
+  parts.push("        token_total: 0,");
+  parts.push("        elapsed_total: 0,");
+  parts.push("        station_run: #{},");
+  parts.push("    },");
   parts.push("    payload: (),");
   parts.push("};");
   parts.push("");

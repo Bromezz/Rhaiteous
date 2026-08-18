@@ -5,6 +5,22 @@ The compiler emits a single Grok Build Rhai script.
 
 Rhaiteous is **flow-only**: you author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not supported.
 
+## Flow state: usage and visit bookkeeping
+
+After each station `agent()` call, the compiled wrapper (not the agent) updates **`flow.state`**:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `state.tokens` | array of maps | One entry per station run: `{ "<StationName>": <tokens_used> }` (0 if host omitted usage) |
+| `state.elapsed` | array of maps | One entry per run: `{ "<StationName>": <duration_ms> }` (0 if omitted) |
+| `state.token_total` | number | Running sum of token counts |
+| `state.elapsed_total` | number | Running sum of durations (milliseconds) |
+| `state.station_run` | map | Station name → how many times it has been dispatched |
+
+Initialized on the starting `flow` object. On success, prior series/totals/visit counts are restored onto the agent’s returned flow so agents cannot wipe the ledger. Failed agents still record a visit and any usage the host returned.
+
+These fields support later caps (max visits, token budgets); this version only **records**.
+
 ## Asset base
 
 Schemas and prompts resolve under an **asset base** directory (CLI: `-b` / `--base`, library: `options.base`).

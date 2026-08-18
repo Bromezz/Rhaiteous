@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Flow usage ledger** (`flow.state`): after each station `agent()` call the wrapper records `tokens` / `elapsed` arrays (station→value maps), `token_total` / `elapsed_total`, and `station_run` visit counts from host `tokens_used` and `duration_ms` (0 if missing). Orchestrator-owned; not agent-maintained.
+
 ### Changed
 
 - **Example station schemas**: one schema per station, station-named files (`intake.schema.json`, …). Removed `shopping-*` filename prefixes. Issues pack now includes schemas for Intake, Formulation, Validation, Presentation, and QA.

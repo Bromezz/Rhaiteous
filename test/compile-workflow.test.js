@@ -74,6 +74,17 @@ nodeTest.test("compiles example-office-shopping pack as flow", function testShop
   //default requests_dir for host pack layout
   nodeAssert.match(result.rhai, /requests_dir/);
 
+  //usage bookkeeping helpers (host tokens_used / duration_ms → flow.state)
+  nodeAssert.match(result.rhai, /fn ensure_usage_state\(/);
+  nodeAssert.match(result.rhai, /fn begin_station_visit\(/);
+  nodeAssert.match(result.rhai, /fn record_usage_from_agent\(/);
+  nodeAssert.match(result.rhai, /fn apply_agent_result\(/);
+  nodeAssert.match(result.rhai, /token_total/);
+  nodeAssert.match(result.rhai, /elapsed_total/);
+  nodeAssert.match(result.rhai, /station_run/);
+  nodeAssert.match(result.rhai, /tokens_used/);
+  nodeAssert.match(result.rhai, /duration_ms/);
+
   //stations as functions + driver
   nodeAssert.match(result.rhai, /fn Intake\(/);
   nodeAssert.match(result.rhai, /fn Inventory\(/);

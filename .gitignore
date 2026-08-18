@@ -22,3 +22,10 @@ examples/**/workflow.rhai
 examples/**/workflow.md
 examples/**/output/**
 !examples/**/output/.gitkeep
+
+# Import / scratch probes (local only)
+.grok/workflows/import-probe-*.rhai
+.grok/workflows/probe_lib.rhai
+.grok/workflows/lib/
+probe_lib.rhai
+_run_shop_prompt.txt
