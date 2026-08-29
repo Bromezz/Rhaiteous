@@ -1,0 +1,12 @@
+# Unattended Rhaiteous runs: skip interactive tool-permission prompts.
+# Deny rules / hooks still apply. CLI --always-approve overrides if needed.
+# Takes effect on the next new session (not mid-session).
+
+[ui]
+permission_mode = "always-approve"
+
+# Optional hard limits (deny always wins over always-approve):
+# [permission]
+# deny = [
+#   "Bash(rm -rf *)",
+# ]

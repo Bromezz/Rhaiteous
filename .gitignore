@@ -14,6 +14,7 @@ workflows/
 # (Git cannot re-include files under a fully ignored parent directory, so
 # ignore contents of .grok/ rather than the directory entry itself.)
 .grok/*
+!.grok/config.toml
 !.grok/workflows/
 !.grok/workflows/**
 
