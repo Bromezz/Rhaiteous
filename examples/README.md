@@ -17,10 +17,9 @@ Each pack has a conceptual **`README.md`** (what the workflow is *for*). Generat
 
 ```text
 examples/example-<name>/
-  workflow.json      # authoring
-  schema.json        # payload schema
+  workflow.json      # authoring (forum / thread+posts)
   stations/          # one .md + one .schema.json per station (station-named)
-  input/             # sample sources
+  input/             # sample sources (shipped in npm seeds)
   output/            # runtime (empty in git)
 ```
 
@@ -31,7 +30,7 @@ examples/example-<name>/
 | Layer | Path |
 |-------|------|
 | **Git (this folder)** | `examples/example-*` |
-| **npm tarball** | `workflows/example-*` (via `npm prepack` → `scripts/map-examples-to-workflows.mjs`) |
+| **npm tarball** | `workflows/example-*` (via `npm prepack` → `packaging/map-examples-to-workflows.mjs`) |
 | **Host after init** | `./workflows/example-*` (copy from the package) |
 
 The published package does **not** ship a top-level `examples/` tree; consumers only see `node_modules/rhaiteous/workflows/example-*/`.

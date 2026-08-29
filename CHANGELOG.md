@@ -7,13 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- **Flow usage ledger** (`flow.state`): after each station `agent()` call the wrapper records `tokens` / `elapsed` arrays (station→value maps), `token_total` / `elapsed_total`, and `station_run` visit counts from host `tokens_used` and `duration_ms` (0 if missing). Orchestrator-owned; not agent-maintained.
+- **Forum post shape:** `metadata.from` / `metadata.to` (was root `to` + `metadata.station`); `message.{ mime, body, attachments }` (was root `text` + `attachments`); attachment type field is universally **`mime`** (not `media_type`).
+
+### Removed
+
+- **`example-thread-validation`** seed pack (validation fixture only; not an enduring product example).
+
+## [0.5.0] — 2026-08-20
 
 ### Changed
 
-- **Example station schemas**: one schema per station, station-named files (`intake.schema.json`, …). Removed `shopping-*` filename prefixes. Issues pack now includes schemas for Intake, Formulation, Validation, Presentation, and QA.
+- **Thread+posts IR (breaking):** the compiler emits a new Grok Rhai model. Stations return **one post** each; the driver maintains a **conversation** (portable `"thread"` with frozen inlined `schemas` + `posts`) and **control** (caps, visits, usage). `apply_station_result` records usage, enforces **max_visits** (default 1), single-`to` routing, and **`routing_rationale`**.
+- **No `payloadSchema`.** Schemas live in `workflow.schemas` and post attachment `schema` keys.
+- **Examples** refactored to thread+posts prompts (`example-office-shopping`, `example-birthday-issues`).
+
+### Added
+
+- `src/emit-thread-workflow.js` — thread+posts emitter
+- `stations[].max_visits` — integer ≥ 1 (default 1 at emit)
 
 ## [0.4.1] — 2026-08-15
 

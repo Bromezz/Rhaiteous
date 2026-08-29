@@ -23,9 +23,16 @@ const emitAllowlist = {
   for: true,
   in: true,
   while: true,
+  do: true,
+  until: true,
+  loop: true,
+  continue: true,
   fn: true,
   Fn: true,
   return: true,
+  break: true,
+  this: true, // method-style forum runner (ctx.run_station / this.control)
+  type_of: true,
   //host / runtime calls and common fields we emit as identifiers
   agent: true,
   parallel: true,
@@ -36,6 +43,7 @@ const emitAllowlist = {
   await_user: true,
   push: true,
   len: true,
+  keys: true,
   to_string: true,
   success: true,
   output: true,
@@ -44,7 +52,9 @@ const emitAllowlist = {
   evidence: true,
   call: true,
   json_encode: true,
+  parse_json: true,
   write_scratch_file: true,
+  read_scratch_file: true,
 };
 
 /*

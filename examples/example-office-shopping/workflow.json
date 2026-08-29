@@ -1,86 +1,62 @@
 {
   "name": "example-office-shopping",
-  "description": "Example seed: twice-weekly office supply cycle (Intake → Inventory → Audit → Procurement → Purchasing).",
-  "payloadSchema": "schema.json",
+  "description": "Thread+posts office supply cycle: Intake → Inventory → Audit → Procurement → Purchasing.",
   "args": {
+    "station_dir": "workflows/example-office-shopping/stations",
     "requests_dir": "workflows/example-office-shopping/input",
+    "out_dir": "workflows/example-office-shopping/output",
     "company_name": "Acme Office",
     "cycle": "twice-weekly"
   },
   "schemas": {
-    "intake": "stations/intake.schema.json",
-    "inventory": "stations/inventory.schema.json",
-    "audit": "stations/audit.schema.json",
-    "procurement": "stations/procurement.schema.json",
-    "purchasing": "stations/purchasing.schema.json"
+    "intake": "intake.schema.json",
+    "inventory": "inventory.schema.json",
+    "audit": "audit.schema.json",
+    "procurement": "procurement.schema.json",
+    "purchasing": "purchasing.schema.json"
   },
   "prompts": {
-    "flow_common": "common.md",
-    "intake": "intake.md",
-    "inventory": "inventory.md",
-    "audit": "audit.md",
-    "procurement": "procurement.md",
-    "purchasing": "purchasing.md"
+    "thread_common": "common.prompt.md",
+    "intake": "intake.prompt.md",
+    "inventory": "inventory.prompt.md",
+    "audit": "audit.prompt.md",
+    "procurement": "procurement.prompt.md",
+    "purchasing": "purchasing.prompt.md"
   },
   "stations": [
     {
       "name": "Intake",
-      "uiDescription": "collect and deposit requests from email, chat, forms",
-      "prompt": [
-        "flow_common",
-        "intake"
-      ],
-      "schemas": [
-        "intake"
-      ],
+      "uiDescription": "collect requests",
+      "prompt": ["thread_common", "intake"],
+      "schemas": ["intake"],
       "capability_mode": "read-only"
     },
     {
       "name": "Inventory",
-      "uiDescription": "compile specific items and quantities per request",
-      "prompt": [
-        "flow_common",
-        "inventory"
-      ],
-      "schemas": [
-        "inventory"
-      ],
+      "uiDescription": "compile line items",
+      "prompt": ["thread_common", "inventory"],
+      "schemas": ["inventory"],
       "capability_mode": "read-only"
     },
     {
       "name": "Audit",
-      "uiDescription": "challenge each line across validity facets",
-      "prompt": [
-        "flow_common",
-        "audit"
-      ],
-      "schemas": [
-        "audit"
-      ],
+      "uiDescription": "challenge each line",
+      "prompt": ["thread_common", "audit"],
+      "schemas": ["audit"],
       "capability_mode": "read-only"
     },
     {
       "name": "Procurement",
-      "uiDescription": "select a vendor for each surviving item",
-      "prompt": [
-        "flow_common",
-        "procurement"
-      ],
-      "schemas": [
-        "procurement"
-      ],
+      "uiDescription": "vendor picks",
+      "prompt": ["thread_common", "procurement"],
+      "schemas": ["procurement"],
       "capability_mode": "read-only"
     },
     {
       "name": "Purchasing",
-      "uiDescription": "buy and record each transaction",
-      "prompt": [
-        "flow_common",
-        "purchasing"
-      ],
-      "schemas": [
-        "purchasing"
-      ],
+      "uiDescription": "record purchases",
+      "prompt": ["thread_common", "purchasing"],
+      "schemas": ["purchasing"],
       "capability_mode": "execute"
     }
   ]

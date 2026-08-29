@@ -50,23 +50,23 @@ Linear `steps[]` / `scriptType: "step"` were removed; multi-agent pipelines are 
 | Module | Responsibility |
 |--------|----------------|
 | `json-to-rhai.js` | Faithful emission of JSON values as Rhai literals |
-| `template.js` | `{{refs}}` → Rhai string concatenation statements |
-| `schema-inline.js` | Compile-time JSON Schema `$ref` resolution |
-| `compile-workflow.js` | Flow validation, schema load, station emit, file I/O |
+| `schema-inline.js` | Compile-time JSON Schema `$ref` resolution (validate/fail-closed) |
+| `compile-workflow.js` | Workflow validation + skinny IR emit (forum-runner template) |
+| `emit-thread-workflow.js` | Fills `templates/forum-runner.rhai.template` splices |
+| `templates/forum-runner.rhai.template` | Shared Rhai body (init thread, load assets, stations) |
 | `cli.js` | `parseArgs`, exit codes, stdout/stderr policy |
+| `init-project.js` | Copy example workflows into a host project |
 | `rhai-keywords.js` | Load/check shipped Rhai keyword list; format multi-violation reports |
 | `data/rhai-keywords.txt` | Active + reserved Rhai keywords (identifier ban-list) |
 
-### Schema pipeline
+### Schema / prompt pipeline (current)
 
-1. Workflow lists `schemas: { binding: "file.schema.json" }` (paths under `{base}/schemas/`)  
-2. Compiler loads and **inlines `$ref`s**  
-3. Emitter writes `let <binding>_schema = #{ ... };` for bindings  
-4. Station `schemas[]` embeds selected documents under **Additional Schemas**  
-5. Optional `payloadSchema` is inlined into `make_flow_schema()` as `properties.payload`  
-6. Station prompts list Markdown under `{base}/prompts/`; bodies are concatenated with banners; `{{templates}}` expand into Rhai string builds  
+1. Workflow lists `schemas` / `prompts` as bindings → bare filenames under `stations/`  
+2. Compiler loads schemas and **inlines `$ref`s** for fail-closed validation (not grafted into Rhai as large literals)  
+3. Skinny emit stamps `meta`, default `workflow.json` path, and `tools/init.mjs` path into the forum-runner template  
+4. At run time the script loads `workflow.json`, schemas, and prompts; stations use a thread file under `threads/`  
 
-Authors never maintain the Rhai form. Default `base` is `./rhaiteous` (CLI `-b` / `--base`).
+Authors never maintain the Rhai form. CLI `-b` / `--base` is the workflow directory (contains `stations/`).
 
 ### Flow / routing pipeline
 

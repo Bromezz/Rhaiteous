@@ -70,8 +70,8 @@ for (const e of names) {
 }
 
 if (n === 0) {
-  console.error("map-examples-to-workflows: no example-* packs found");
+  console.error("map-examples-to-workflows: no example-* directories found under examples/");
   process.exit(1);
 }
 
-console.log("ok: " + n + " seed pack(s) under workflows/");
+console.log("ok: " + n + " example workflow(s) under workflows/");

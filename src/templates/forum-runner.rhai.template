@@ -1,0 +1,678 @@
+// Forum runner template (shared body).
+// Skinny emitter stamps only:
+//   META           — let meta = #{ name, description, phases… };
+//   WORKFLOW_JSON  — workspace-relative path to this workflow's workflow.json
+//   INIT_SCRIPT    — path to tools/init.mjs (create stamped thread file)
+//
+// Catalogs, station defs, and arg defaults are NOT emitted.
+// They are loaded/derived at run time from workflow.json + launch args.
+// Missing required config → fail closed (pause).
+
+@@META@@
+
+let default_workflow_json = @@WORKFLOW_JSON@@;
+let init_script = @@INIT_SCRIPT@@;
+
+// --- required launch args (no emitter defaults for station_dir) ---
+if args == () {
+    pause("verification", "Pass args: at least station_dir (and workflow path if not using compile-time default).");
+}
+
+let workflow_path = args.workflow;
+if workflow_path == () || workflow_path == "" {
+    workflow_path = default_workflow_json;
+}
+if workflow_path == () || workflow_path == "" {
+    pause("verification", "Pass args.workflow — path to workflow.json (or compile with a known workflow.json path).");
+}
+
+let context_only = args.context_only == true;
+
+// --- ctx (empty until init loads workflow.json + assets) ---
+let ctx = #{
+    conversation: #{
+        schemas: #{},
+        posts: [],
+    },
+    prompts: #{
+        by_path: #{},
+        by_station: #{},
+    },
+    control: #{
+        stations: [],
+        caps: #{},
+        station_run: #{},
+        token_total: 0,
+        elapsed_total: 0,
+        tokens: [],
+        elapsed: [],
+        current: (),
+        next: (),
+        warnings: [],
+    },
+    workflow: (),
+    station_defs: [],
+    schema_catalog: #{},
+    prompt_catalog: #{},
+    station_dir: (),
+    run_args: args,
+    workflow_path: workflow_path,
+    init_script: init_script,
+    thread_path: (),
+};
+
+fn find_station_def(station_name) {
+    for st in this.station_defs {
+        if st.name == station_name {
+            return st;
+        }
+    }
+    ()
+}
+
+fn make_post_schema() {
+    #{
+        "type": "object",
+        "required": ["metadata", "message"],
+        "properties": #{
+            "metadata": #{
+                "type": "object",
+                "required": ["from", "visit"],
+                "properties": #{
+                    "from": #{ "type": "string" },
+                    "to": #{},
+                    "visit": #{ "type": "integer", "minimum": 1 },
+                    "tokens": #{ "type": "number" },
+                    "duration_ms": #{ "type": "number" },
+                    "routing_rationale": #{ "type": "string" },
+                    "mode": #{ "type": "string" },
+                    "advance": #{ "type": "string" },
+                },
+            },
+            "message": #{
+                "type": "object",
+                "properties": #{
+                    "mime": #{ "type": "string" },
+                    "body": #{ "type": "string" },
+                    "attachments": #{
+                        "type": "array",
+                        "items": #{
+                            "type": "object",
+                            "properties": #{
+                                "name": #{ "type": "string" },
+                                "mime": #{ "type": "string" },
+                                "schema": #{ "type": "string" },
+                                "content": #{},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+
+fn begin_station_visit(station_name) {
+    let n = this.control.station_run[station_name];
+    if n == () { n = 0; }
+    this.control.station_run[station_name] = n + 1;
+    n + 1
+}
+
+fn budget_block() {
+    let text = "Station visit budget (do not invent):\n";
+    for name in this.control.stations {
+        let used = this.control.station_run[name];
+        if used == () { used = 0; }
+        let maxv = this.control.caps[name];
+        if maxv == () { maxv = 1; }
+        let left = maxv - used;
+        if left < 0 { left = 0; }
+        let capped = "";
+        if left == 0 { capped = " CAPPED"; }
+        text += "  " + name + ": visit " + used + " of max " + maxv + " → REMAINING " + left + capped + "\n";
+    }
+    text += "token_total=" + this.control.token_total + " elapsed_total_ms=" + this.control.elapsed_total + "\n";
+    text
+}
+
+fn max_visits_for(station_name) {
+    let maxv = this.control.caps[station_name];
+    if maxv == () { maxv = 1; }
+    maxv
+}
+
+fn default_next_station(from_name) {
+    let found = false;
+    let nxt = ();
+    for name in this.control.stations {
+        if found {
+            nxt = name;
+            break;
+        }
+        if name == from_name {
+            found = true;
+        }
+    }
+    nxt
+}
+
+fn normalize_to_field(raw_to) {
+    if raw_to == () {
+        return ();
+    }
+    if type_of(raw_to) == "array" {
+        if raw_to.len() == 0 {
+            return ();
+        }
+        if raw_to.len() > 1 {
+            return #{ multi: true, first: raw_to[0] };
+        }
+        return raw_to[0];
+    }
+    raw_to
+}
+
+// Rhai fns do not capture outer lets — schemas returned from fns.
+fn make_load_workflow_schema() {
+    #{
+        "type": "object",
+        "required": ["ok", "workflow"],
+        "properties": #{
+            "ok": #{ "type": "boolean" },
+            "path": #{ "type": "string" },
+            "workflow": #{},
+            "error": #{ "type": "string" },
+        },
+    }
+}
+
+fn make_load_assets_schema() {
+    #{
+        "type": "object",
+        "required": ["ok", "schemas", "prompts"],
+        "properties": #{
+            "ok": #{ "type": "boolean" },
+            "schemas": #{
+                "type": "array",
+                "items": #{
+                    "type": "object",
+                    "required": ["key", "path", "schema"],
+                    "properties": #{
+                        "key": #{ "type": "string" },
+                        "path": #{ "type": "string" },
+                        "schema": #{},
+                        "error": #{ "type": "string" },
+                    },
+                },
+            },
+            "prompts": #{
+                "type": "array",
+                "items": #{
+                    "type": "object",
+                    "required": ["key", "path", "text"],
+                    "properties": #{
+                        "key": #{ "type": "string" },
+                        "path": #{ "type": "string" },
+                        "text": #{ "type": "string" },
+                        "error": #{ "type": "string" },
+                    },
+                },
+            },
+            "error": #{ "type": "string" },
+        },
+    }
+}
+
+// Load workflow.json; derive catalogs + station_defs + station_dir on this.
+fn load_workflow_doc() {
+    let path = this.workflow_path;
+    let prompt = "";
+    prompt += "Use the read_file tool on this exact workspace-relative path:\n";
+    prompt += path;
+    prompt += "\n\nReturn ok=true, path, workflow=the parsed JSON object (not a string), error=\"\".\n";
+    prompt += "If the file cannot be read or is not JSON, ok=false and set error. Do not invent contents.\n";
+
+    let ar = agent(prompt, #{
+        label: "load-workflow-json",
+        capability_mode: "read-only",
+        output_schema: make_load_workflow_schema(),
+    });
+
+    if ar == () || !ar.success || ar.output == () || ar.output.ok != true || ar.output.workflow == () {
+        let msg = "workflow.json load failed";
+        if ar != () && ar.output != () && ar.output.error != () {
+            msg = ar.output.error;
+        }
+        pause("infra", "Asset load failed: " + msg);
+    }
+
+    let doc = ar.output.workflow;
+    this.workflow = doc;
+
+    // station_dir: launch args win; else workflow.args.station_dir; else fail
+    let sdir = this.run_args.station_dir;
+    if sdir == () || sdir == "" {
+        if doc.args != () && doc.args.station_dir != () {
+            sdir = doc.args.station_dir;
+        }
+    }
+    if sdir == () || sdir == "" {
+        pause("verification", "Missing station_dir — pass args.station_dir or set args.station_dir in workflow.json.");
+    }
+    this.station_dir = sdir;
+
+    // catalogs from document (runtime, not emitted)
+    if doc.schemas == () || type_of(doc.schemas) != "map" {
+        pause("infra", "workflow.json missing schemas map");
+    }
+    if doc.prompts == () || type_of(doc.prompts) != "map" {
+        pause("infra", "workflow.json missing prompts map");
+    }
+    if doc.stations == () || type_of(doc.stations) != "array" || doc.stations.len() == 0 {
+        pause("infra", "workflow.json missing non-empty stations array");
+    }
+
+    this.schema_catalog = doc.schemas;
+    this.prompt_catalog = doc.prompts;
+
+    let defs = [];
+    let names = [];
+    let caps = #{};
+    for st in doc.stations {
+        if st == () || st.name == () {
+            pause("infra", "workflow.json stations entry missing name");
+        }
+        defs.push(st);
+        names.push(st.name);
+        let mv = st.max_visits;
+        if mv == () { mv = 1; }
+        caps[st.name] = mv;
+    }
+    this.station_defs = defs;
+    this.control.stations = names;
+    this.control.caps = caps;
+}
+
+fn prepare_assets() {
+    let schema_jobs = [];
+    for key in this.schema_catalog.keys() {
+        let file = this.schema_catalog[key];
+        schema_jobs.push(#{
+            key: key,
+            path: this.station_dir + "/" + file,
+        });
+    }
+
+    let prompt_jobs = [];
+    for key in this.prompt_catalog.keys() {
+        let file = this.prompt_catalog[key];
+        prompt_jobs.push(#{
+            key: key,
+            path: this.station_dir + "/" + file,
+        });
+    }
+
+    let prompt = "";
+    prompt += "Load workflow assets with the read_file tool. Do not invent file contents.\n\n";
+    prompt += "## Schemas (JSON)\n";
+    prompt += "For each entry: read path, parse JSON, return { key, path, schema } where schema is the object (not a string).\n";
+    for j in schema_jobs {
+        prompt += "- key=" + j.key + " path=" + j.path + "\n";
+    }
+    prompt += "\n## Prompts (Markdown text)\n";
+    prompt += "For each entry: read path, return { key, path, text } with the full file text.\n";
+    for j in prompt_jobs {
+        prompt += "- key=" + j.key + " path=" + j.path + "\n";
+    }
+    prompt += "\nReturn ok=true only if every listed path was read successfully. ";
+    prompt += "Otherwise ok=false, set error, and still include per-item error fields where possible.\n";
+
+    let ar = agent(prompt, #{
+        label: "load-workflow-assets",
+        capability_mode: "read-only",
+        output_schema: make_load_assets_schema(),
+    });
+
+    if ar == () || !ar.success || ar.output == () || ar.output.ok != true {
+        let msg = "workflow asset load failed";
+        if ar != () && ar.output != () && ar.output.error != () {
+            msg = ar.output.error;
+        }
+        this.control.warnings.push(msg);
+        pause("infra", "Asset load failed: " + msg);
+    }
+
+    for item in ar.output.schemas {
+        if item != () && item.key != () && item.schema != () {
+            this.conversation.schemas[item.key] = item.schema;
+        } else {
+            this.control.warnings.push("schema item missing key/schema");
+        }
+    }
+
+    for item in ar.output.prompts {
+        if item != () && item.key != () && item.text != () {
+            this.prompts.by_path[item.key] = item.text;
+        } else {
+            this.control.warnings.push("prompt item missing key/text");
+        }
+    }
+
+    for st in this.station_defs {
+        let body = "";
+        if st.prompt == () {
+            this.control.warnings.push("station missing prompt list: " + st.name);
+        } else {
+            for binding in st.prompt {
+                let chunk = this.prompts.by_path[binding];
+                if chunk == () {
+                    this.control.warnings.push("missing prompt binding '" + binding + "' for station " + st.name);
+                } else {
+                    body += chunk;
+                    body += "\n\n";
+                }
+            }
+        }
+        this.prompts.by_station[st.name] = body;
+    }
+}
+
+fn apply_station_result(station_name, visit_n, output) {
+    let post = ();
+    let tok = 0;
+    let el = 0;
+    if output != () {
+        if output.tokens_used != () { tok = output.tokens_used; }
+        if output.duration_ms != () { el = output.duration_ms; }
+    }
+
+    if output == () || !output.success || output.output == () {
+        post = #{
+            metadata: #{
+                "from": station_name,
+                "to": [],
+                visit: visit_n,
+                tokens: tok,
+                duration_ms: el,
+                routing_rationale: "Station agent failed; clearing next.",
+            },
+            message: #{
+                mime: "text/plain",
+                body: "ORCHESTRATOR: agent failed for " + station_name,
+                attachments: [],
+            },
+        };
+        this.control.next = ();
+        this.conversation.posts.push(post);
+        let tok_entry = #{};
+        tok_entry[station_name] = tok;
+        this.control.tokens.push(tok_entry);
+        let el_entry = #{};
+        el_entry[station_name] = el;
+        this.control.elapsed.push(el_entry);
+        this.control.token_total = this.control.token_total + tok;
+        this.control.elapsed_total = this.control.elapsed_total + el;
+        return;
+    }
+
+    post = output.output;
+    if post.metadata == () { post.metadata = #{}; }
+    if post.message == () {
+        post.message = #{ mime: "text/markdown", body: "", attachments: [] };
+    }
+    if post.message.mime == () { post.message.mime = "text/markdown"; }
+    if post.message.attachments == () { post.message.attachments = []; }
+    post.metadata["from"] = station_name;
+    post.metadata.visit = visit_n;
+    post.metadata.tokens = tok;
+    post.metadata.duration_ms = el;
+
+    let norm = this.normalize_to_field(post.metadata["to"]);
+    let chosen = ();
+    if type_of(norm) == "map" && norm.multi == true {
+        this.control.warnings.push("multi-to unsupported; using first recipient only");
+        if post.metadata.routing_rationale == () || post.metadata.routing_rationale == "" {
+            post.metadata.routing_rationale = "Multi-recipient to is unsupported; using first recipient only.";
+        }
+        chosen = norm.first;
+    } else if norm == () {
+        chosen = this.default_next_station(station_name);
+        if post.metadata.routing_rationale == () || post.metadata.routing_rationale == "" {
+            post.metadata.routing_rationale = "Default next station in list.";
+        }
+    } else {
+        chosen = norm;
+    }
+
+    if chosen != () {
+        let used = this.control.station_run[chosen];
+        if used == () { used = 0; }
+        let maxv = this.max_visits_for(chosen);
+        if used >= maxv {
+            let fallback = this.default_next_station(station_name);
+            if fallback == chosen {
+                fallback = ();
+            }
+            if fallback != () {
+                let used_fb = this.control.station_run[fallback];
+                if used_fb == () { used_fb = 0; }
+                if used_fb >= this.max_visits_for(fallback) {
+                    fallback = ();
+                }
+            }
+            post.metadata.routing_rationale = "Preferred station '" + chosen + "' is at max visits (" + used + "/" + maxv + "); routing adjusted.";
+            chosen = fallback;
+            this.control.warnings.push("capped route for " + station_name);
+        }
+    }
+
+    if chosen == () {
+        post.metadata["to"] = [];
+    } else {
+        post.metadata["to"] = chosen;
+    }
+    this.control.next = chosen;
+
+    this.conversation.posts.push(post);
+    let tok_entry2 = #{};
+    tok_entry2[station_name] = tok;
+    this.control.tokens.push(tok_entry2);
+    let el_entry2 = #{};
+    el_entry2[station_name] = el;
+    this.control.elapsed.push(el_entry2);
+    this.control.token_total = this.control.token_total + tok;
+    this.control.elapsed_total = this.control.elapsed_total + el;
+}
+
+fn run_station(station_name) {
+    let def = this.find_station_def(station_name);
+    if def == () {
+        this.control.warnings.push("unknown station: " + station_name);
+        this.control.next = ();
+        return;
+    }
+
+    phase(station_name);
+    this.control.current = station_name;
+
+    let visit_n = this.begin_station_visit(station_name);
+    let budget = this.budget_block();
+
+    let prompt_extra = this.prompts.by_station[station_name];
+    if prompt_extra == () { prompt_extra = ""; }
+
+    prompt_extra += "\n\n## Visit / budget (authoritative)\n";
+    prompt_extra += budget;
+    prompt_extra += "\n\n## Your station\nName: " + station_name + "\nVisit: " + visit_n + "\n";
+    prompt_extra += "\nReturn exactly one post: metadata (from, to, visit, routing_rationale) + message (mime, body, attachments). ";
+    prompt_extra += "Use mime everywhere (e.g. text/markdown, application/json). ";
+    prompt_extra += "Set metadata.routing_rationale when routing is non-default or caps force a choice.\n";
+
+    if def.schemas != () {
+        prompt_extra += "\n\n## Attachment schema keys for this station\n";
+        for key in def.schemas {
+            prompt_extra += "- " + key + " (see thread.schemas)\n";
+        }
+    }
+
+    prompt_extra += "\n\n## Workflow args (JSON)\n";
+    prompt_extra += json_encode(this.run_args);
+
+    prompt_extra += "\n\n## Conversation thread (authoritative)\n";
+    prompt_extra += "Before doing any other work, use the read_file tool on this exact path:\n";
+    prompt_extra += this.thread_path;
+    prompt_extra += "\n";
+    prompt_extra += "That file is the full forum conversation (schemas + posts[] with attachments).\n";
+    prompt_extra += "Work only from what you load there plus this prompt. Do not invent prior posts or attachments.\n";
+    prompt_extra += "If posts is empty, you are first (or the thread truly has no deposits yet).\n";
+    prompt_extra += "After you finish, the orchestrator will refresh this same file with your post applied.\n";
+
+    let cap = def.capability_mode;
+    if cap == () { cap = "read-only"; }
+    let label = def.label;
+    if label == () { label = station_name; }
+
+    let output = agent(
+        "Station " + station_name + "\n\n" + prompt_extra,
+        #{
+            label: label,
+            capability_mode: cap,
+            output_schema: make_post_schema(),
+        }
+    );
+
+    this.apply_station_result(station_name, visit_n, output);
+    this.persist_thread_file();
+}
+
+fn make_rhaiteous_init_schema() {
+    #{
+        "type": "object",
+        "required": ["ok", "thread_path", "runtime", "notes"],
+        "properties": #{
+            "ok": #{ "type": "boolean" },
+            "thread_path": #{ "type": "string" },
+            "os": #{ "type": "string" },
+            "runtime": #{ "type": "string" },
+            "command": #{ "type": "string" },
+            "notes": #{ "type": "string" },
+        },
+    }
+}
+
+// Create stamped empty thread under the workflow's threads/ directory; return full path.
+fn rhaiteous_initialization() {
+    let prompt = "";
+    prompt += "You are Rhaiteous Initialization. Do exactly this:\n";
+    prompt += "1. Confirm Node.js works (e.g. node -v).\n";
+    prompt += "2. Run this command with the shell tool (do not invent the path):\n";
+    prompt += "   node " + this.init_script + " --workflow " + this.workflow_path + "\n";
+    prompt += "3. That script creates an empty timestamped JSON thread file and prints its FULL path on stdout.\n";
+    prompt += "4. Return ok=true, thread_path=exact stdout path (trimmed), runtime=\"node\", os=short OS name if known, command=exact command, notes=brief.\n";
+    prompt += "If anything fails, ok=false, thread_path=\"\", explain in notes.\n";
+
+    let ar = agent(prompt, #{
+        label: "rhaiteous-initialization",
+        capability_mode: "execute",
+        output_schema: make_rhaiteous_init_schema(),
+    });
+
+    if ar == () || !ar.success || ar.output == () || ar.output.ok != true || ar.output.thread_path == () || ar.output.thread_path == "" {
+        let msg = "Rhaiteous Initialization failed";
+        if ar != () && ar.output != () && ar.output.notes != () {
+            msg = ar.output.notes;
+        }
+        pause("infra", msg);
+    }
+
+    this.thread_path = ar.output.thread_path;
+}
+
+fn make_persist_thread_schema() {
+    #{
+        "type": "object",
+        "required": ["ok", "path", "notes"],
+        "properties": #{
+            "ok": #{ "type": "boolean" },
+            "path": #{ "type": "string" },
+            "notes": #{ "type": "string" },
+        },
+    }
+}
+
+// Write current conversation JSON to ctx.thread_path (agent file write).
+fn persist_thread_file() {
+    if this.thread_path == () || this.thread_path == "" {
+        pause("infra", "persist_thread_file: thread_path missing");
+    }
+
+    let body = json_encode(this.conversation);
+    let prompt = "";
+    prompt += "Overwrite this file with the EXACT JSON below (pretty-print optional).\n";
+    prompt += "Path: " + this.thread_path + "\n";
+    prompt += "Use file write tools. Do not change the path.\n";
+    prompt += "Return ok=true and path=the path written.\n\n";
+    prompt += "JSON:\n";
+    prompt += body;
+    prompt += "\n";
+
+    let ar = agent(prompt, #{
+        label: "persist-thread",
+        capability_mode: "read-write",
+        output_schema: make_persist_thread_schema(),
+    });
+
+    if ar == () || !ar.success || ar.output == () || ar.output.ok != true {
+        let msg = "persist-thread failed";
+        if ar != () && ar.output != () && ar.output.notes != () {
+            msg = ar.output.notes;
+        }
+        pause("infra", msg);
+    }
+}
+
+// ========== bootstrap ==========
+phase("Rhaiteous Initialization");
+ctx.rhaiteous_initialization();
+
+phase("Init");
+ctx.load_workflow_doc();
+ctx.prepare_assets();
+ctx.persist_thread_file();
+
+if context_only {
+    complete(#{
+        mode: "context_only",
+        "thread": ctx.conversation,
+        thread_path: ctx.thread_path,
+        control: ctx.control,
+        prompts: #{
+            bindings: ctx.prompts.by_path.keys(),
+            stations: ctx.prompts.by_station.keys(),
+        },
+        station_dir: ctx.station_dir,
+        workflow_path: ctx.workflow_path,
+        warnings: ctx.control.warnings,
+    });
+}
+
+// ========== driver ==========
+ctx.control.next = if ctx.control.stations.len() == 0 {
+    ()
+} else {
+    ctx.control.stations[0]
+};
+
+do {
+    let next_name = ctx.control.next;
+    if next_name == () {
+        break;
+    }
+    ctx.run_station(next_name);
+} while ctx.control.next != ();
+
+complete(#{
+    "thread": ctx.conversation,
+    control: ctx.control,
+});

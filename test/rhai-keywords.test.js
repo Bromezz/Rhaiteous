@@ -54,154 +54,105 @@ nodeTest.test("example-office-shopping has no keyword violations", function test
     base: shoppingPack, //pack assets
   });
 
-  //rhai produced
+  //rhai produced (skinny forum-runner — stations dispatched by name)
   nodeAssert.match(result.rhai, /let meta = #\{/);
-  nodeAssert.match(result.rhai, /fn Intake\(/);
+  nodeAssert.match(result.rhai, /make_post_schema/);
+  nodeAssert.match(result.rhai, /title: "Intake"/);
+  nodeAssert.match(result.rhai, /fn run_station\(/);
+  nodeAssert.match(result.rhai, /fn load_workflow_doc\(/);
 
 //end testCleanExample
 });
 
+function writeKwPack(tmpDir) {
+  const stations = nodePath.join(tmpDir, "stations");
+  nodeFs.mkdirSync(stations, { recursive: true });
+  nodeFs.writeFileSync(nodePath.join(stations, "a.prompt.md"), "A\n", "utf8");
+}
+
 //station name using a keyword fails
 nodeTest.test("rejects reserved keyword as station name", function testBadStation() {
-
-  //variables
-  let tmpDir = ""; //temp
-  let promptsDir = ""; //prompts
-
-  tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwst-"));
-  promptsDir = nodePath.join(tmpDir, "prompts");
-  nodeFs.mkdirSync(promptsDir, { recursive: true });
-  nodeFs.writeFileSync(nodePath.join(promptsDir, "a.md"), "A\n", "utf8");
+  let tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwst-"));
+  writeKwPack(tmpDir);
 
   try {
-
     nodeAssert.throws(function runCompile() {
-
       compileMod.compileWorkflow(
         {
-          name: "kw-demo", //name
-          description: "keyword violation", //desc
-          stations: [
-            {
-              name: "switch", //reserved
-              prompt: ["a.md"], //prompt
-            },
-          ],
+          name: "kw-demo",
+          description: "keyword violation",
+          args: { station_dir: "stations" },
+          prompts: { a: "a.prompt.md" },
+          stations: [{ name: "switch", prompt: ["a"] }],
         },
         { base: tmpDir }
       );
-
-    //end run
     }, /reserved keyword|keyword "switch"|Rhai reserved keyword/i);
-
   } finally {
-
     nodeFs.rmSync(tmpDir, { recursive: true, force: true });
-
-  //end try
   }
-
-//end testBadStation
 });
 
 //multiple violations listed together
 nodeTest.test("reports multiple keyword violations", function testMulti() {
-
-  //variables
-  let tmpDir = ""; //temp
-  let promptsDir = ""; //prompts
-  let err = null; //caught error
-
-  tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwmul-"));
-  promptsDir = nodePath.join(tmpDir, "prompts");
-  nodeFs.mkdirSync(promptsDir, { recursive: true });
-  nodeFs.writeFileSync(nodePath.join(promptsDir, "a.md"), "A\n", "utf8");
+  let tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwmul-"));
+  let err = null;
+  writeKwPack(tmpDir);
 
   try {
-
     try {
-
       compileMod.compileWorkflow(
         {
-          name: "kw-multi", //name
-          description: "multiple keywords", //desc
+          name: "kw-multi",
+          description: "multiple keywords",
           args: {
-            for: true, //reserved
+            station_dir: "stations",
+            for: true, // reserved arg name
           },
-          stations: [
-            {
-              name: "match", //reserved
-              prompt: ["a.md"], //prompt
-            },
-          ],
+          prompts: { a: "a.prompt.md" },
+          stations: [{ name: "match", prompt: ["a"] }],
         },
         { base: tmpDir }
       );
-
       nodeAssert.fail("expected throw");
-
     } catch (e) {
-
       err = e;
-
-    //end try
     }
 
     nodeAssert.match(String(err && err.message), /for/);
     nodeAssert.match(String(err && err.message), /match/);
     nodeAssert.match(String(err && err.message), /2\)|2\./);
-
   } finally {
-
     nodeFs.rmSync(tmpDir, { recursive: true, force: true });
-
-  //end try
   }
-
-//end testMulti
 });
 
-//keyword only inside a prompt string does not fail
+//keyword only inside a prompt file does not fail (prompts are not grafted into IR)
 nodeTest.test("prompt text containing keywords is allowed", function testStringOk() {
-
-  //variables
-  let tmpDir = ""; //temp
-  let promptsDir = ""; //prompts
-  let result = null; //compile
-
-  tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwstr-"));
-  promptsDir = nodePath.join(tmpDir, "prompts");
-  nodeFs.mkdirSync(promptsDir, { recursive: true });
+  let tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "kwstr-"));
+  const stations = nodePath.join(tmpDir, "stations");
+  nodeFs.mkdirSync(stations, { recursive: true });
   nodeFs.writeFileSync(
-    nodePath.join(promptsDir, "a.md"),
+    nodePath.join(stations, "a.prompt.md"),
     "Use the switch and match carefully; this is not code.\n",
     "utf8"
   );
 
   try {
-
-    result = compileMod.compileWorkflow(
+    const result = compileMod.compileWorkflow(
       {
-        name: "kw-str", //name
-        description: "keywords in prompt text only", //desc
-        stations: [
-          {
-            name: "Alpha", //ok
-            prompt: ["a.md"], //contains reserved words as text
-          },
-        ],
+        name: "kw-str",
+        description: "keywords in prompt text only",
+        args: { station_dir: "stations" },
+        prompts: { a: "a.prompt.md" },
+        stations: [{ name: "Alpha", prompt: ["a"] }],
       },
       { base: tmpDir }
     );
 
-    nodeAssert.match(result.rhai, /switch and match/);
-
+    nodeAssert.match(result.rhai, /fn prepare_assets\(/);
+    nodeAssert.doesNotMatch(result.rhai, /switch and match/);
   } finally {
-
     nodeFs.rmSync(tmpDir, { recursive: true, force: true });
-
-  //end try
   }
-
-//end testStringOk
 });

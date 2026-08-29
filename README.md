@@ -300,11 +300,11 @@ Details: **[docs/cli-and-api.md](./docs/cli-and-api.md)**.
 ```text
 bin/rhaiteous.js            CLI entry
 src/                        compiler + library
-scripts/
+packaging/
   map-examples-to-workflows.mjs   # prepack: examples/ → workflows/
   clean-workflows-map.mjs         # postpack cleanup
 examples/
-  example-office-shopping/  # seed packs (git; example- prefix)
+  example-office-shopping/  # example workflows (git; example- prefix)
   example-birthday-issues/
 workflows/                  # generated at prepack only (gitignored; npm ships this)
 test/                       node:test suite

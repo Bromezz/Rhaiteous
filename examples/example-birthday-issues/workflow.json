@@ -1,8 +1,8 @@
 {
   "name": "example-birthday-issues",
-  "description": "Example seed: source-agnostic issues mining (Intake curated corpus → Formulation ⇄ Validation → Presentation → QA) over a birthday-planning fixture.",
-  "payloadSchema": "schema.json",
+  "description": "Thread+posts issues mining: Intake → Formulation ⇄ Validation → Presentation → QA.",
   "args": {
+    "station_dir": "workflows/example-birthday-issues/stations",
     "source_candidates": [
       {
         "type": "file",
@@ -15,85 +15,62 @@
     ],
     "out_dir": "workflows/example-birthday-issues/output",
     "curated": null,
-    "flow_json_name": "example-birthday-issues-flow.json",
+    "flow_json_name": "example-birthday-issues-thread.json",
     "issues_md_name": "example-birthday-issues-issues.md",
     "report_title": "Birthday planning issues"
   },
   "schemas": {
-    "intake": "stations/intake.schema.json",
-    "formulation": "stations/formulation.schema.json",
-    "validation": "stations/validation.schema.json",
-    "presentation": "stations/presentation.schema.json",
-    "qa": "stations/qa.schema.json"
+    "intake": "intake.schema.json",
+    "formulation": "formulation.schema.json",
+    "validation": "validation.schema.json",
+    "presentation": "presentation.schema.json",
+    "qa": "qa.schema.json"
   },
   "prompts": {
-    "flow_common": "common.md",
-    "intake": "intake.md",
-    "formulation": "formulation.md",
-    "validation": "validation.md",
-    "presentation": "presentation.md",
-    "qa": "qa.md"
+    "thread_common": "common.prompt.md",
+    "intake": "intake.prompt.md",
+    "formulation": "formulation.prompt.md",
+    "validation": "validation.prompt.md",
+    "presentation": "presentation.prompt.md",
+    "qa": "qa.prompt.md"
   },
   "stations": [
     {
       "name": "Intake",
-      "uiDescription": "Verify sources; curate Markdown corpus",
-      "prompt": [
-        "flow_common",
-        "intake"
-      ],
-      "capability_mode": "read-write",
-      "schemas": [
-        "intake"
-      ]
+      "uiDescription": "Verify sources; curate corpus",
+      "prompt": ["thread_common", "intake"],
+      "schemas": ["intake"],
+      "capability_mode": "read-write"
     },
     {
       "name": "Formulation",
-      "uiDescription": "Surface issues from curated only; itemsAdded",
-      "prompt": [
-        "flow_common",
-        "formulation"
-      ],
-      "schemas": [
-        "formulation"
-      ],
-      "capability_mode": "read-only"
+      "uiDescription": "Surface issues from curated only",
+      "prompt": ["thread_common", "formulation"],
+      "schemas": ["formulation"],
+      "capability_mode": "read-only",
+      "max_visits": 12
     },
     {
       "name": "Validation",
-      "uiDescription": "Coverage gate then skeptical validity",
-      "prompt": [
-        "flow_common",
-        "validation"
-      ],
+      "uiDescription": "Coverage gate then validity",
+      "prompt": ["thread_common", "validation"],
+      "schemas": ["validation"],
       "capability_mode": "read-only",
-      "schemas": [
-        "validation"
-      ]
+      "max_visits": 12
     },
     {
       "name": "Presentation",
-      "uiDescription": "Write flow JSON + issues markdown under out_dir",
-      "prompt": [
-        "flow_common",
-        "presentation"
-      ],
-      "capability_mode": "read-write",
-      "schemas": [
-        "presentation"
-      ]
+      "uiDescription": "Write thread + issues report",
+      "prompt": ["thread_common", "presentation"],
+      "schemas": ["presentation"],
+      "capability_mode": "read-write"
     },
     {
       "name": "QA",
-      "uiDescription": "Polish wording and formatting",
-      "prompt": [
-        "flow_common",
-        "qa"
-      ],
-      "capability_mode": "read-write",
-      "schemas": [
-        "qa"
-      ]
+      "uiDescription": "Polish wording",
+      "prompt": ["thread_common", "qa"],
+      "schemas": ["qa"],
+      "capability_mode": "read-write"
     }
   ]
 }

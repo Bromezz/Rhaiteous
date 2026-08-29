@@ -1,25 +1,48 @@
 # Workflow JSON reference
 
 This document defines the **authoring format** consumed by **Rhaiteous** (`rhaiteous`).  
-The compiler emits a single Grok Build Rhai script.
+The compiler emits a single Grok Build Rhai script using the **thread + posts** model.
 
-Rhaiteous is **flow-only**: you author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not supported.
+You author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not supported.
 
-## Flow state: usage and visit bookkeeping
+## Runtime model (emitted IR)
 
-After each station `agent()` call, the compiled wrapper (not the agent) updates **`flow.state`**:
+| Piece | Role |
+|--------|------|
+| **conversation** | Portable thread: frozen `schemas` map + ordered `posts[]` (Rhai name avoids reserved keyword `thread`; `complete` exposes key `"thread"`) |
+| **control** | `stations`, `caps` / `max_visits`, `station_run`, usage totals, `next` |
+| **Station output** | Exactly **one post**: `metadata` + `message` |
+| **Driver** | `phase` → `agent` → `apply_station_result` → follow single `metadata.to` until terminal |
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `state.tokens` | array of maps | One entry per station run: `{ "<StationName>": <tokens_used> }` (0 if host omitted usage) |
-| `state.elapsed` | array of maps | One entry per run: `{ "<StationName>": <duration_ms> }` (0 if omitted) |
-| `state.token_total` | number | Running sum of token counts |
-| `state.elapsed_total` | number | Running sum of durations (milliseconds) |
-| `state.station_run` | map | Station name → how many times it has been dispatched |
+Default **`max_visits` = 1** per station unless `stations[].max_visits` is set. Multi-recipient `to` is unsupported (first recipient only + rationale/warning).
 
-Initialized on the starting `flow` object. On success, prior series/totals/visit counts are restored onto the agent’s returned flow so agents cannot wipe the ledger. Failed agents still record a visit and any usage the host returned.
+### Post shape
 
-These fields support later caps (max visits, token budgets); this version only **records**.
+```json
+{
+  "metadata": {
+    "from": "Intake",
+    "to": "Inventory",
+    "visit": 1,
+    "tokens": 0,
+    "duration_ms": 0,
+    "routing_rationale": "…"
+  },
+  "message": {
+    "mime": "text/markdown",
+    "body": "…",
+    "attachments": [
+      { "name": "result", "mime": "application/json", "schema": "intake", "content": { } }
+    ]
+  }
+}
+```
+
+- **`metadata.from` / `metadata.to`** — sender and next addressee (peers).
+- **`message`** — body block (`mime`, `body`, `attachments`). Use property name **`mime`** on both the message and each attachment.
+- **`metadata.routing_rationale`** — one-line human reason when caps or non-default routing apply (agent or driver).
+
+After each station `agent()` call the wrapper records host `tokens_used` / `duration_ms` onto metadata and into `control`.
 
 ## Asset base
 

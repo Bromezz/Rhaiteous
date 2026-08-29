@@ -9,9 +9,9 @@ import nodePath from "node:path";
 
 //local emitters
 import jsonToRhaiMod from "./json-to-rhai.js";
-import templateMod from "./template.js";
 import rhaiKeywordsMod from "./rhai-keywords.js";
 import schemaInlineMod from "./schema-inline.js";
+import { emitForumRunnerScript } from "./emit-thread-workflow.js";
 
 //active compile context for keyword collection (set only during compileWorkflow)
 let activeKeywordCtx = null; //ctx with keywordViolations[]
@@ -168,6 +168,7 @@ function resolveSchemasDir(baseDir) {
 
   //variables
   let legacy = ""; //base/schemas
+  let stations = ""; //base/stations (forum pack)
 
   //legacy multi-workflow base
   legacy = nodePath.join(baseDir, "schemas");
@@ -181,10 +182,57 @@ function resolveSchemasDir(baseDir) {
   //end legacy
   }
 
+  //forum pack: schemas live beside prompts under stations/
+  stations = nodePath.join(baseDir, "stations");
+  if (nodeFs.existsSync(stations) && nodeFs.statSync(stations).isDirectory()) {
+    return stations;
+  }
+
   //pack layout: asset base is the schemas boundary
   return baseDir;
 
 //end resolveSchemasDir
+}
+
+/*
+ * @description authoring stations directory ({base}/stations)
+ * @param baseDir - pack root
+ * @returns absolute stations directory
+ */
+function resolveStationsDir(baseDir) {
+  let stations = nodePath.join(baseDir, "stations");
+  if (!nodeFs.existsSync(stations) || !nodeFs.statSync(stations).isDirectory()) {
+    throw new Error(
+      "pack stations directory missing (expected *.schema.json and *.prompt.md here): " +
+        stations
+    );
+  }
+  return stations;
+}
+
+/*
+ * @description bare filename under station_dir (no path segments)
+ * @param rel - catalog value
+ * @param label - error label
+ * @returns rel when valid
+ */
+function assertBarePackFilename(rel, label) {
+  if (typeof rel !== "string" || rel.length === 0) {
+    throw new Error(label + " must be a non-empty filename");
+  }
+  if (
+    rel.includes("/") ||
+    rel.includes("\\") ||
+    rel.includes("..") ||
+    nodePath.isAbsolute(rel)
+  ) {
+    throw new Error(
+      label +
+        " must be a bare filename under args.station_dir (no path segments); got " +
+        JSON.stringify(rel)
+    );
+  }
+  return rel;
 }
 
 /*
@@ -388,111 +436,11 @@ function loadSchemas(schemas, baseDir) {
 //end loadSchemas
 }
 
-/*
- * @description load prompt source files and concatenate them with section banners
- * @param promptFiles - array of file names relative to {base}/prompts
- * @param baseDir - absolute asset base (contains schemas/ and prompts/)
- * @returns concatenated prompt template text (still may contain {{refs}})
- */
-function loadPromptFiles(promptFiles, baseDir) {
-
-  //variables
-  let i = 0; //file index
-  let rel = ""; //relative path under prompts/
-  let abs = ""; //absolute path
-  let raw = ""; //file text
-  let parts = []; //banner + body chunks
-  let promptsDir = ""; //absolute prompts directory
-  let displayName = ""; //name shown in the banner
-
-  //prompt must be a non-empty array of source file names
-  if (!Array.isArray(promptFiles) || promptFiles.length === 0) {
-
-    //bad shape
-    throw new Error(
-      "prompt must be a non-empty array of source file names under prompts/ or stations/"
-    );
-
-  //end array guard
-  }
-
-  //legacy {base}/prompts or pack {base}/stations
-  promptsDir = resolvePromptsDir(baseDir);
-
-  //load each referenced file in order
-  i = 0;
-
-  //walk files
-  while (i < promptFiles.length) {
-
-    //file entry
-    rel = promptFiles[i];
-
-    //require non-empty string path
-    if (typeof rel !== "string" || rel.length === 0) {
-
-      //bad entry
-      throw new Error("prompt[" + i + "] must be a non-empty source file name");
-
-    //end entry guard
-    }
-
-    //banner uses the path as authored (basename-friendly for nested files)
-    displayName = rel.split(/[/\\]/).filter(function keepSeg(seg) {
-
-      //drop empty segments
-      return seg.length > 0;
-
-    //end filter
-    }).pop() || rel;
-
-    //resolve under {base}/prompts
-    abs = nodePath.resolve(promptsDir, rel);
-
-    try {
-
-      //read utf-8 text
-      raw = nodeFs.readFileSync(abs, "utf8");
-
-      //strip a leading utf-8 bom when present
-      if (raw.charCodeAt(0) === 0xfeff) {
-
-        //drop bom
-        raw = raw.slice(1);
-
-      //end bom strip
-      }
-
-    } catch (err) {
-
-      //log full stack
-      console.error("failed to load prompt file " + abs, err);
-
-      //fail closed — any missing/unreadable file aborts compile
-      throw new Error("failed to load prompt file '" + rel + "' from " + abs + ": " + err.message);
-
-    }
-
-    //each file is prefaced by newline, banner, newline, then body
-    parts.push("\n===== [" + displayName + "] =====\n");
-    parts.push(raw);
-
-    //next file
-    i += 1;
-
-  //end file walk
-  }
-
-  //joined template text for emitPromptBuild
-  return parts.join("");
-
-//end loadPromptFiles
-}
 
 /*
- * @description normalize top-level workflow.prompts map (binding → path under prompts/)
+ * @description normalize top-level workflow.prompts map (binding → bare *.prompt.md filename)
  * @param prompts - author map or undefined
- * @returns map binding → relative path, or null when omitted
+ * @returns map binding → filename, or null when omitted
  */
 function normalizePromptRegistry(prompts) {
 
@@ -500,7 +448,7 @@ function normalizePromptRegistry(prompts) {
   let keys = null; //binding names
   let i = 0; //index
   let key = ""; //binding
-  let rel = ""; //path
+  let rel = ""; //filename
   let out = {}; //registry
 
   //omit → legacy path arrays on stations / steps
@@ -517,7 +465,7 @@ function normalizePromptRegistry(prompts) {
 
     //bad
     throw new Error(
-      "workflow.prompts must be an object map of binding → path under prompts/"
+      "workflow.prompts must be an object map of binding → *.prompt.md filename"
     );
 
   //end type
@@ -533,16 +481,13 @@ function normalizePromptRegistry(prompts) {
     //binding name
     key = assertIdent(keys[i], "prompts binding");
 
-    //path value
-    rel = prompts[keys[i]];
+    //filename value
+    rel = assertBarePackFilename(prompts[keys[i]], "prompts." + key);
 
-    //require non-empty string path
-    if (typeof rel !== "string" || rel.length === 0) {
-
-      //bad path
-      throw new Error("prompts." + key + " must be a non-empty path under prompts/");
-
-    //end path guard
+    if (!rel.endsWith(".prompt.md")) {
+      throw new Error(
+        "prompts." + key + " must end with .prompt.md (got " + JSON.stringify(rel) + ")"
+      );
     }
 
     //store
@@ -567,6 +512,138 @@ function normalizePromptRegistry(prompts) {
   return out;
 
 //end normalizePromptRegistry
+}
+
+/*
+ * @description normalize workflow.schemas map (binding → bare *.schema.json filename)
+ * @param schemas - author map
+ * @returns map binding → filename
+ */
+function normalizeSchemaCatalog(schemas) {
+  let keys = null;
+  let i = 0;
+  let key = "";
+  let rel = "";
+  let out = {};
+
+  if (schemas === undefined || schemas === null) {
+    return out;
+  }
+  if (typeof schemas !== "object" || Array.isArray(schemas)) {
+    throw new Error(
+      "workflow.schemas must be an object map of binding → *.schema.json filename"
+    );
+  }
+
+  keys = Object.keys(schemas);
+  i = 0;
+  while (i < keys.length) {
+    key = assertIdent(keys[i], "schema binding");
+    rel = assertBarePackFilename(schemas[keys[i]], "schemas." + key);
+    if (!rel.endsWith(".schema.json")) {
+      throw new Error(
+        "schemas." + key + " must end with .schema.json (got " + JSON.stringify(rel) + ")"
+      );
+    }
+    out[key] = rel;
+    i += 1;
+  }
+  return out;
+}
+
+/*
+ * @description ensure catalog files exist under {base}/stations and are non-empty / valid JSON
+ * @param schemaCatalog - binding → filename
+ * @param promptCatalog - binding → filename
+ * @param stationsDir - absolute stations directory
+ */
+function assertPackAssetsOnDisk(schemaCatalog, promptCatalog, stationsDir) {
+  let keys = null;
+  let i = 0;
+  let key = "";
+  let abs = "";
+  let text = "";
+
+  keys = Object.keys(schemaCatalog);
+  i = 0;
+  while (i < keys.length) {
+    key = keys[i];
+    abs = nodePath.join(stationsDir, schemaCatalog[key]);
+    if (!nodeFs.existsSync(abs)) {
+      throw new Error("schema file missing: " + abs);
+    }
+    i += 1;
+  }
+
+  keys = Object.keys(promptCatalog || {});
+  i = 0;
+  while (i < keys.length) {
+    key = keys[i];
+    abs = nodePath.join(stationsDir, promptCatalog[key]);
+    if (!nodeFs.existsSync(abs)) {
+      throw new Error("prompt file missing: " + abs);
+    }
+    text = nodeFs.readFileSync(abs, "utf8");
+    if (typeof text !== "string" || text.trim().length === 0) {
+      throw new Error("prompt file empty: " + abs);
+    }
+    i += 1;
+  }
+}
+
+/*
+ * @description validate workflow.args: flat values + required station_dir
+ * @param argsDef - workflow.args
+ * @returns args object (possibly {})
+ */
+function validateWorkflowArgs(argsDef) {
+  let keys = null;
+  let i = 0;
+  let key = "";
+  let def = null;
+  let isPlainObject = false;
+  let onlyKeys = null;
+  let hasLegacyDefault = false;
+  let out = {};
+
+  if (!argsDef || typeof argsDef !== "object" || Array.isArray(argsDef)) {
+    throw new Error(
+      "workflow.args is required and must include station_dir (directory of *.schema.json / *.prompt.md)"
+    );
+  }
+
+  keys = Object.keys(argsDef);
+  i = 0;
+  while (i < keys.length) {
+    key = assertIdent(keys[i], "args field");
+    def = argsDef[keys[i]];
+    isPlainObject = def !== null && typeof def === "object" && !Array.isArray(def);
+    onlyKeys = isPlainObject ? Object.keys(def) : null;
+    hasLegacyDefault =
+      isPlainObject &&
+      Object.prototype.hasOwnProperty.call(def, "default") &&
+      onlyKeys.length === 1 &&
+      onlyKeys[0] === "default";
+    if (hasLegacyDefault) {
+      throw new Error(
+        "args." +
+          key +
+          ': put the value directly after the key (e.g. "' +
+          key +
+          '": <value>) instead of { "default": ... }'
+      );
+    }
+    out[key] = def;
+    i += 1;
+  }
+
+  if (typeof out.station_dir !== "string" || out.station_dir.length === 0) {
+    throw new Error(
+      "workflow.args.station_dir is required (runtime directory containing *.schema.json and *.prompt.md)"
+    );
+  }
+
+  return out;
 }
 
 /*
@@ -599,7 +676,7 @@ function resolvePromptList(promptList, promptRegistry, origin) {
   //legacy: no registry → each entry is a file path
   if (promptRegistry === null || promptRegistry === undefined) {
 
-    //validate strings only; loadPromptFiles will open files
+    // validate binding names only; files checked in assertPackAssetsOnDisk
     i = 0;
 
     //walk
@@ -1073,386 +1150,6 @@ function resolveWorkflowMdPaths(absIn, outPath) {
 //end resolveWorkflowMdPaths
 }
 
-/*
- * @description emit the pure-literal meta header required by Grok Build
- * @param workflow - workflow document
- * @returns Rhai source for let meta = #{...};
- */
-function emitMeta(workflow) {
-
-  //variables
-  let meta = null; //meta object for emission
-  let phases = null; //normalized phases
-  let i = 0; //loop index
-  let phaseIn = null; //input phase
-  let phaseOut = null; //normalized phase
-
-  //validate name
-  assertWorkflowName(workflow.name);
-
-  //require description
-  if (typeof workflow.description !== "string" || workflow.description.length === 0) {
-
-    //missing description
-    throw new Error("workflow description must be a non-empty string");
-
-  //end description guard
-  }
-
-  //start meta object
-  meta = {
-    name: workflow.name, //workflow discovery name
-    description: workflow.description, //human summary
-  };
-
-  //optional phases for the dashboard rail
-  if (workflow.phases !== undefined) {
-
-    //require array
-    if (!Array.isArray(workflow.phases)) {
-
-      //bad phases
-      throw new Error("workflow phases must be an array when present");
-
-    //end phases-type guard
-    }
-
-    //normalize phases
-    phases = [];
-
-    //walk phases
-    i = 0;
-
-    //each phase needs a title
-    while (i < workflow.phases.length) {
-
-      //input phase entry
-      phaseIn = workflow.phases[i];
-
-      //require object with title
-      if (!phaseIn || typeof phaseIn !== "object" || typeof phaseIn.title !== "string") {
-
-        //bad phase
-        throw new Error("phases[" + i + "] must be an object with a string title");
-
-      //end phase guard
-      }
-
-      //build normalized phase
-      phaseOut = {
-        title: phaseIn.title, //phase title
-      };
-
-      //optional UI description (author field uiDescription → Grok meta detail)
-      if (phaseIn.detail !== undefined) {
-
-        //old name rejected
-        throw new Error(
-          "phases[" + i + "].detail is not supported; use uiDescription " +
-          "(emitted as meta.phases[].detail for Grok)"
-        );
-
-      //end old name guard
-      }
-
-      //optional uiDescription
-      if (typeof phaseIn.uiDescription === "string") {
-
-        //Grok phase rail subtitle
-        phaseOut.detail = phaseIn.uiDescription;
-
-      //end uiDescription branch
-      }
-
-      //store phase
-      phases.push(phaseOut);
-
-      //next phase
-      i += 1;
-
-    //end phase walk
-    }
-
-    //attach phases to meta
-    meta.phases = phases;
-
-  //end phases branch
-  }
-
-  //emit pure-literal meta assignment (jsonToRhai sorts keys; force name-first via custom emit)
-  return "let meta = " + emitMetaMap(meta) + ";\n";
-
-//end emitMeta
-}
-
-/*
- * @description emit meta map with stable field order (name, description, phases)
- * @param meta - meta object
- * @returns Rhai map literal
- */
-function emitMetaMap(meta) {
-
-  //variables
-  let lines = []; //field lines
-  let i = 0; //phase index
-  let phase = null; //current phase
-  let phaseLines = []; //phase map fields
-  let phasesBlock = ""; //phases array source
-
-  //name first
-  lines.push("    name: " + jsonToRhaiMod.emitRhaiString(meta.name) + ",");
-
-  //description second
-  lines.push("    description: " + jsonToRhaiMod.emitRhaiString(meta.description) + ",");
-
-  //phases when present
-  if (meta.phases) {
-
-    //build phase object lines
-    phaseLines = [];
-
-    //walk phases in order
-    i = 0;
-
-    //emit each phase map
-    while (i < meta.phases.length) {
-
-      //current phase
-      phase = meta.phases[i];
-
-      //phase with optional detail
-      if (phase.detail !== undefined) {
-
-        //title and detail
-        phaseLines.push(
-          "        #{\n" +
-          "            title: " + jsonToRhaiMod.emitRhaiString(phase.title) + ",\n" +
-          "            detail: " + jsonToRhaiMod.emitRhaiString(phase.detail) + ",\n" +
-          "        },"
-        );
-
-      } else {
-
-        //title only
-        phaseLines.push(
-          "        #{\n" +
-          "            title: " + jsonToRhaiMod.emitRhaiString(phase.title) + ",\n" +
-          "        },"
-        );
-
-      //end detail branch
-      }
-
-      //next phase
-      i += 1;
-
-    //end phase walk
-    }
-
-    //phases array block
-    phasesBlock = "    phases: [\n" + phaseLines.join("\n") + "\n    ],";
-
-    //append phases field
-    lines.push(phasesBlock);
-
-  //end phases field
-  }
-
-  //full map
-  return "#{\n" + lines.join("\n") + "\n}";
-
-//end emitMetaMap
-}
-
-/*
- * @description emit schema locals as Rhai maps from loaded JSON Schema objects
- * @param loadedSchemas - binding → schema object
- * @returns Rhai source declaring each schema local
- */
-function emitSchemaLocals(loadedSchemas) {
-
-  //variables
-  let keys = null; //binding names
-  let i = 0; //loop index
-  let key = ""; //current binding
-  let lines = []; //emitted lines
-  let body = ""; //map body
-
-  //stable order
-  keys = Object.keys(loadedSchemas).sort();
-
-  //nothing to emit
-  if (keys.length === 0) {
-
-    //empty preamble section
-    return "";
-
-  //end empty branch
-  }
-
-  //section banner
-  lines.push("// json schemas embedded from disk (part of this build artifact; do not edit)");
-
-  //emit each schema binding
-  i = 0;
-
-  //walk bindings
-  while (i < keys.length) {
-
-    //binding name
-    key = keys[i];
-
-    //convert schema object to Rhai map
-    body = jsonToRhaiMod.jsonToRhai(loadedSchemas[key], "");
-
-    //blank line before each binding after the first section comment is handled by join
-    lines.push("let " + key + "_schema = " + body + ";");
-
-    //next binding
-    i += 1;
-
-  //end binding walk
-  }
-
-  //join with blank lines between declarations for readability
-  return lines[0] + "\n\n" + lines.slice(1).join("\n\n") + "\n";
-
-//end emitSchemaLocals
-}
-
-/*
- * @description emit args preamble locals and required-arg pauses
- * @param argsDef - workflow.args map
- * @returns { source: string, argsLocals: object }
- */
-function emitArgsPreamble(argsDef) {
-
-  //variables
-  const argsLocals = {}; //field → true for template scope
-  let keys = null; //arg names
-  let i = 0; //loop index
-  let key = ""; //current arg
-  let def = null; //raw author value for this arg
-  let lines = []; //rhai lines
-  let defaultLit = ""; //default literal
-  let isPlainObject = false; //def is non-array object
-  let onlyKeys = null; //object keys when inspecting forms
-  let isRequired = false; //pause when missing
-  let isOptionalUnit = false; //bind unit when missing, no default
-  let hasLegacyDefault = false; //old { "default": ... } wrapper
-
-  //no args section
-  if (!argsDef || typeof argsDef !== "object" || Array.isArray(argsDef)) {
-
-    //empty preamble
-    return {
-      source: "", //no source
-      argsLocals: argsLocals, //empty locals
-    };
-
-  //end missing-args branch
-  }
-
-  //stable order
-  keys = Object.keys(argsDef).sort();
-
-  //section banner
-  lines.push("//workflow args bound to locals");
-
-  //emit each arg
-  i = 0;
-
-  //walk args
-  while (i < keys.length) {
-
-    //arg field name doubles as Rhai local
-    key = assertIdent(keys[i], "args field");
-
-    //value immediately after the key (default, true, {required:true}, or {})
-    def = argsDef[keys[i]];
-
-    //mark known for templates
-    argsLocals[key] = true;
-
-    //classify author form
-    isPlainObject =
-      def !== null &&
-      typeof def === "object" &&
-      !Array.isArray(def);
-    onlyKeys = isPlainObject ? Object.keys(def) : null;
-    isRequired =
-      def === true ||
-      (isPlainObject &&
-        def.required === true &&
-        onlyKeys.length === 1 &&
-        onlyKeys[0] === "required");
-    isOptionalUnit = isPlainObject && onlyKeys.length === 0;
-    hasLegacyDefault =
-      isPlainObject &&
-      Object.prototype.hasOwnProperty.call(def, "default") &&
-      onlyKeys.length === 1 &&
-      onlyKeys[0] === "default";
-
-    //legacy nested default clutters authoring — value goes on the key
-    if (hasLegacyDefault) {
-
-      //point authors at the flat form
-      throw new Error(
-        "args." + key +
-        ": put the value directly after the key (e.g. \"" + key +
-        "\": <value>) instead of { \"default\": ... }"
-      );
-
-    //end legacy guard
-    }
-
-    //required without default → pause when missing
-    if (isRequired) {
-
-      //bind from args or unit
-      lines.push("let " + key + " = if args == () { () } else { args." + key + " };");
-
-      //pause when missing
-      lines.push(
-        "if " + key + " == () { pause(\"verification\", " +
-        jsonToRhaiMod.emitRhaiString("Pass args." + key + ".") +
-        "); }"
-      );
-
-    } else if (isOptionalUnit) {
-
-      //optional without default → unit when missing
-      lines.push("let " + key + " = if args == () { () } else { args." + key + " };");
-
-    } else {
-
-      //value after the key is the default (string, number, array, object, …)
-      defaultLit = jsonToRhaiMod.jsonToRhai(def, "");
-
-      //bind with default when missing
-      lines.push(
-        "let " + key + " = if args == () || args." + key + " == () { " +
-        defaultLit +
-        " } else { args." + key + " };"
-      );
-
-    //end required/default branches
-    }
-
-    //next arg
-    i += 1;
-
-  //end arg walk
-  }
-
-  //return source and local map
-  return {
-    source: lines.join("\n") + "\n", //preamble source
-    argsLocals: argsLocals, //template scope
-  };
-
-//end emitArgsPreamble
-}
 
 /*
  * @description validate and normalize stations[] for flow scripts
@@ -1568,16 +1265,36 @@ function normalizeStations(stations) {
     //end agent_type
     }
 
-    //optional capability_mode
+    //optional capability_mode (omit → read-only at run)
     if (typeof raw.capability_mode === "string") {
-
-      //mode
+      if (
+        raw.capability_mode !== "read-only" &&
+        raw.capability_mode !== "read-write" &&
+        raw.capability_mode !== "execute" &&
+        raw.capability_mode !== "all"
+      ) {
+        throw new Error(
+          "stations[" +
+            i +
+            '].capability_mode must be "read-only"|"read-write"|"execute"|"all" (got ' +
+            JSON.stringify(raw.capability_mode) +
+            ")"
+        );
+      }
       entry.capability_mode = raw.capability_mode;
-
-    //end capability_mode
     }
 
-    //optional schema binding names (prompt guidance only; not host-enforced)
+    //optional max_visits (default 1 at emit)
+    if (raw.max_visits !== undefined && raw.max_visits !== null) {
+      if (typeof raw.max_visits !== "number" || !Number.isInteger(raw.max_visits) || raw.max_visits < 1) {
+        throw new Error(
+          "stations[" + i + "].max_visits must be an integer >= 1"
+        );
+      }
+      entry.max_visits = raw.max_visits;
+    }
+
+    //optional schema binding names (attachment schema keys for this station)
     if (raw.schemas !== undefined) {
 
       //must be an array of binding names
@@ -1726,83 +1443,6 @@ function assertStationSchemasResolved(stations, loadedSchemas) {
 //end assertStationSchemasResolved
 }
 
-/*
- * @description Rhai lines that append Additional Schemas block onto station prompt extra
- * @param station - normalized station (may have schemas[])
- * @param loadedSchemas - binding → schema object
- * @param indent - leading whitespace for Rhai statements
- * @returns Rhai source (empty string when no schemas)
- */
-function emitStationAdditionalSchemasAppend(station, loadedSchemas, indent) {
-
-  //variables
-  let lines = []; //rhai lines
-  let i = 0; //index
-  let binding = ""; //schema name
-  let schemaJson = ""; //pretty JSON text
-  let block = ""; //full section text
-  let parts = []; //section pieces
-
-  //nothing to append
-  if (!Array.isArray(station.schemas) || station.schemas.length === 0) {
-
-    //no section
-    return "";
-
-  //end empty
-  }
-
-  //heading + best-effort adjuration
-  parts.push("");
-  parts.push("## Additional Schemas");
-  parts.push("");
-  parts.push(
-    "Make a best effort to conform to the following schemas wherever they apply, " +
-    "as indicated by each schema's description (and related fields). " +
-    "These guide how you read and write values inside the flow document " +
-    "(especially under flow.state); they are not separately host-enforced beyond " +
-    "the flow envelope output_schema."
-  );
-  parts.push("");
-
-  //each referenced schema
-  i = 0;
-
-  //walk
-  while (i < station.schemas.length) {
-
-    //binding
-    binding = station.schemas[i];
-
-    //pretty-print schema for the prompt
-    schemaJson = JSON.stringify(loadedSchemas[binding], null, 2);
-
-    //subsection per binding
-    parts.push("### " + binding);
-    parts.push("");
-    parts.push("```json");
-    parts.push(schemaJson);
-    parts.push("```");
-    parts.push("");
-
-    //next
-    i += 1;
-
-  //end walk
-  }
-
-  //joined section
-  block = parts.join("\n");
-
-  //append onto extra after author prompt files
-  lines.push(indent + "//station schemas (prompt guidance; best effort)");
-  lines.push(indent + "extra += " + jsonToRhaiMod.emitRhaiString(block) + ";");
-
-  //rhai fragment
-  return lines.join("\n");
-
-//end emitStationAdditionalSchemasAppend
-}
 
 /*
  * @description build meta.phases from stations array
@@ -1855,685 +1495,6 @@ function phasesFromStations(stations) {
 //end phasesFromStations
 }
 
-/*
- * @description build the flow envelope JSON Schema object (optional payload subschema)
- * @param payloadSchema - inlined payload schema object, or null for open nullable payload
- * @returns envelope schema object
- */
-function buildFlowEnvelopeSchema(payloadSchema) {
-
-  //variables
-  let payload = null; //payload property schema
-
-  //payload: author schema or open object|null
-  if (payloadSchema && typeof payloadSchema === "object") {
-
-    //inlined author payload
-    payload = payloadSchema;
-
-  } else {
-
-    //default open payload
-    payload = {
-      type: ["object", "null"], //nullable object
-      description: "Workflow-specific payload (no payloadSchema declared)",
-    };
-
-  //end payload branch
-  }
-
-  //fixed envelope + modular payload
-  return {
-    type: "object",
-    required: ["stations", "log", "current", "next", "msg", "state", "payload"],
-    properties: {
-      stations: {
-        type: "array",
-        items: { type: "string" },
-      },
-      log: {
-        type: "array",
-        items: {
-          type: "object",
-          required: ["station", "msg"],
-          properties: {
-            station: { type: "string" },
-            msg: { type: "string" },
-          },
-        },
-      },
-      current: { type: ["string", "null"] },
-      next: { type: ["string", "null"] },
-      msg: { type: ["string", "null"] },
-      state: {
-        type: "object",
-        additionalProperties: true,
-      },
-      payload: payload, //inlined or default
-    },
-  };
-
-//end buildFlowEnvelopeSchema
-}
-
-/*
- * @description load optional workflow.payloadSchema and fully inline $refs
- * @param workflow - workflow document
- * @param baseDir - asset base
- * @returns inlined schema object or null when omitted
- */
-function loadPayloadSchema(workflow, baseDir) {
-
-  //variables
-  let rel = ""; //path under schemas/
-  let schemasDir = ""; //absolute schemas dir
-  let inlined = null; //result
-
-  //optional
-  if (workflow.payloadSchema === undefined || workflow.payloadSchema === null) {
-
-    //none
-    return null;
-
-  //end omit
-  }
-
-  //must be string path
-  if (typeof workflow.payloadSchema !== "string" || workflow.payloadSchema.length === 0) {
-
-    //bad
-    throw new Error("workflow.payloadSchema must be a non-empty path under schemas/");
-
-  //end type
-  }
-
-  //path under schemas root (legacy schemas/ or pack base)
-  rel = workflow.payloadSchema;
-  schemasDir = resolveSchemasDir(baseDir);
-
-  //load + inline
-  try {
-
-    //resolve refs
-    inlined = schemaInlineMod.loadAndInline(rel, schemasDir);
-
-  } catch (err) {
-
-    //log
-    console.error("failed to load payloadSchema '" + rel + "'", err);
-
-    //fail closed
-    throw new Error(
-      "failed to load workflow.payloadSchema '" + rel + "': " + err.message
-    );
-
-  //end load
-  }
-
-  //inlined payload schema
-  return inlined;
-
-//end loadPayloadSchema
-}
-
-/*
- * @description emit make_flow_schema() with optional inlined payload
- * @param payloadSchema - inlined payload schema or null
- * @returns Rhai source
- */
-function emitMakeFlowSchemaFn(payloadSchema) {
-
-  //variables
-  let envelope = null; //JSON schema object
-  let body = ""; //rhai map literal
-
-  //build envelope (payload inlined into properties.payload)
-  envelope = buildFlowEnvelopeSchema(payloadSchema);
-
-  //emit as Rhai map
-  body = jsonToRhaiMod.jsonToRhai(envelope, "    ");
-
-  //function returning the envelope
-  return (
-    "//flow envelope schema (agent returns the full flow object; payload inlined at compile time)\n" +
-    "fn make_flow_schema() {\n" +
-    "    " + body + "\n" +
-    "}\n"
-  );
-
-//end emitMakeFlowSchemaFn
-}
-
-/*
- * @description emit shared station_prompt + usage bookkeeping + run_station helpers
- * Host agent() returns tokens_used and duration_ms; wrapper records them on flow.state
- * (agents do not maintain these fields).
- * @returns Rhai source
- */
-function emitFlowStationHelpers() {
-
-  //standard imperatives; station-specific text is the extra argument
-  return (
-    "fn station_prompt(station_name, flow, extra) {\n" +
-    "    let p = \"\";\n" +
-    "    p += \"You are the workflow station named \\\"\" + station_name + \"\\\".\\n\";\n" +
-    "    p += \"You receive a single JSON object called flow. You must return the FULL modified flow object.\\n\\n\";\n" +
-    "    p += \"IMPERATIVES (do these in order):\\n\";\n" +
-    "    p += \"1. FIRST set flow.next and flow.msg both to null.\\n\";\n" +
-    "    p += \"2. Append one log entry to flow.log: { \\\"station\\\": \\\"\" + station_name + \"\\\", \\\"msg\\\": \\\"Hello from \" + station_name + \"\\\" }.\\n\";\n" +
-    "    p += \"3. Ensure flow.state[\\\"\" + station_name + \"\\\"] is an object and set status to \\\"complete\\\". \";\n" +
-    "    p += \"Preserve other keys on that object and other stations' state unless your station-specific rules say otherwise.\\n\";\n" +
-    "    p += \"4. DEFAULT ROUTING: set flow.next to the station name immediately after flow.current in flow.stations \";\n" +
-    "    p += \"(same array order). If this is the last station, set flow.next to null. \";\n" +
-    "    p += \"Do not hard-code a successor by name for the default path — look it up on flow.stations. \";\n" +
-    "    p += \"Only set flow.next to a different station name (or null early) when station-specific conditions require it.\\n\";\n" +
-    "    p += \"5. You may set flow.msg for the next station, or leave it null.\\n\";\n" +
-    "    p += \"6. Preserve flow.stations, flow.payload, prior log entries, and other stations' state " +
-    "unless station-specific rules update payload.\\n\";\n" +
-    "    p += \"7. Do not clear or rewrite flow.state.tokens, flow.state.elapsed, flow.state.token_total, \";\n" +
-    "    p += \"flow.state.elapsed_total, or flow.state.station_run — the orchestrator owns those.\\n\";\n" +
-    "    p += \"8. Return the complete modified flow object as your only structured result.\\n\";\n" +
-    "    if extra != () && extra != \"\" {\n" +
-    "        p += \"\\nSTATION-SPECIFIC INSTRUCTIONS:\\n\";\n" +
-    "        p += extra;\n" +
-    "        p += \"\\n\";\n" +
-    "    }\n" +
-    "    p += \"\\nCurrent flow JSON:\\n\";\n" +
-    "    p += json_encode(flow);\n" +
-    "    p\n" +
-    "}\n" +
-    "\n" +
-    "//usage / visit bookkeeping on flow.state (orchestrator-owned; not agent-maintained)\n" +
-    "fn ensure_usage_state(flow) {\n" +
-    "    if flow.state == () {\n" +
-    "        flow.state = #{};\n" +
-    "    }\n" +
-    "    if flow.state.tokens == () {\n" +
-    "        flow.state.tokens = [];\n" +
-    "    }\n" +
-    "    if flow.state.elapsed == () {\n" +
-    "        flow.state.elapsed = [];\n" +
-    "    }\n" +
-    "    if flow.state.token_total == () {\n" +
-    "        flow.state.token_total = 0;\n" +
-    "    }\n" +
-    "    if flow.state.elapsed_total == () {\n" +
-    "        flow.state.elapsed_total = 0;\n" +
-    "    }\n" +
-    "    if flow.state.station_run == () {\n" +
-    "        flow.state.station_run = #{};\n" +
-    "    }\n" +
-    "    flow\n" +
-    "}\n" +
-    "\n" +
-    "fn begin_station_visit(flow, station_name) {\n" +
-    "    flow = ensure_usage_state(flow);\n" +
-    "    let n = flow.state.station_run[station_name];\n" +
-    "    if n == () {\n" +
-    "        n = 0;\n" +
-    "    }\n" +
-    "    flow.state.station_run[station_name] = n + 1;\n" +
-    "    flow\n" +
-    "}\n" +
-    "\n" +
-    "fn record_usage_from_agent(flow, station_name, output) {\n" +
-    "    flow = ensure_usage_state(flow);\n" +
-    "    let tok = 0;\n" +
-    "    let el = 0;\n" +
-    "    if output != () {\n" +
-    "        if output.tokens_used != () {\n" +
-    "            tok = output.tokens_used;\n" +
-    "        }\n" +
-    "        if output.duration_ms != () {\n" +
-    "            el = output.duration_ms;\n" +
-    "        }\n" +
-    "    }\n" +
-    "    let tok_entry = #{};\n" +
-    "    tok_entry[station_name] = tok;\n" +
-    "    flow.state.tokens.push(tok_entry);\n" +
-    "    let el_entry = #{};\n" +
-    "    el_entry[station_name] = el;\n" +
-    "    flow.state.elapsed.push(el_entry);\n" +
-    "    flow.state.token_total = flow.state.token_total + tok;\n" +
-    "    flow.state.elapsed_total = flow.state.elapsed_total + el;\n" +
-    "    flow\n" +
-    "}\n" +
-    "\n" +
-    "fn apply_agent_result(station_name, flow_before, output) {\n" +
-    "    if output == () || !output.success || output.output == () {\n" +
-    "        let flow = flow_before;\n" +
-    "        flow = record_usage_from_agent(flow, station_name, output);\n" +
-    "        flow.next = ();\n" +
-    "        flow.msg = \"Station agent failed: \" + station_name;\n" +
-    "        flow.log.push(#{\n" +
-    "            station: station_name,\n" +
-    "            msg: \"ORCHESTRATOR: agent failed; clearing next\",\n" +
-    "        });\n" +
-    "        return flow;\n" +
-    "    }\n" +
-    "    let flow = output.output;\n" +
-    "    flow = ensure_usage_state(flow);\n" +
-    "    flow.state.tokens = flow_before.state.tokens;\n" +
-    "    flow.state.elapsed = flow_before.state.elapsed;\n" +
-    "    flow.state.token_total = flow_before.state.token_total;\n" +
-    "    flow.state.elapsed_total = flow_before.state.elapsed_total;\n" +
-    "    flow.state.station_run = flow_before.state.station_run;\n" +
-    "    flow = record_usage_from_agent(flow, station_name, output);\n" +
-    "    flow\n" +
-    "}\n" +
-    "\n" +
-    "fn run_station(station_name, flow, extra) {\n" +
-    "    phase(station_name);\n" +
-    "    flow.current = station_name;\n" +
-    "    flow = begin_station_visit(flow, station_name);\n" +
-    "    let output = agent(\n" +
-    "        station_prompt(station_name, flow, extra),\n" +
-    "        #{\n" +
-    "            label: station_name,\n" +
-    "            capability_mode: \"read-only\",\n" +
-    "            output_schema: make_flow_schema(),\n" +
-    "        }\n" +
-    "    );\n" +
-    "    apply_agent_result(station_name, flow, output)\n" +
-    "}\n"
-  );
-
-//end emitFlowStationHelpers
-}
-
-/*
- * @description whether the workflow declares any args locals for station injection
- * @param ctx - compile context
- * @returns boolean
- */
-function flowHasArgsLocals(ctx) {
-
-  //has map with keys
-  return !!(
-    ctx &&
-    ctx.argsLocals &&
-    typeof ctx.argsLocals === "object" &&
-    Object.keys(ctx.argsLocals).length > 0
-  );
-
-//end flowHasArgsLocals
-}
-
-/*
- * @description top-level Rhai: encode resolved args locals to workflow_args_json
- * (station fns cannot see outer lets or args — pass this string into each station)
- * @param ctx - compile context with argsLocals
- * @returns Rhai source or empty string
- */
-function emitWorkflowArgsJsonLocal(ctx) {
-
-  //variables
-  let keys = null; //arg names
-  let i = 0; //index
-  let lines = []; //rhai
-  let mapFields = []; //map fields
-
-  //no args
-  if (!flowHasArgsLocals(ctx)) {
-
-    //empty
-    return "";
-
-  //end empty
-  }
-
-  //stable order
-  keys = Object.keys(ctx.argsLocals).sort();
-  i = 0;
-
-  //walk
-  while (i < keys.length) {
-
-    //field from outer local (this runs at script top level, not inside a station fn)
-    mapFields.push("    " + keys[i] + ": " + keys[i] + ",");
-
-    //next
-    i += 1;
-
-  //end walk
-  }
-
-  //encode once for Fn(...).call(flow, workflow_args_json)
-  lines.push("//JSON snapshot of workflow args — passed into station functions");
-  lines.push("let workflow_args_json = json_encode(#{");
-  lines.push(mapFields.join("\n"));
-  lines.push("});");
-  lines.push("");
-
-  //source
-  return lines.join("\n");
-
-//end emitWorkflowArgsJsonLocal
-}
-
-/*
- * @description Rhai lines that append workflow_args_json onto station prompt extra
- * @param ctx - compile context with argsLocals
- * @param indent - leading whitespace
- * @returns Rhai source (empty when no args)
- */
-function emitFlowArgsContextAppend(ctx, indent) {
-
-  //variables
-  let lines = []; //rhai
-
-  //no args
-  if (!flowHasArgsLocals(ctx)) {
-
-    //empty
-    return "";
-
-  //end empty
-  }
-
-  //parameter workflow_args_json is passed into the station fn
-  lines.push(indent + "//workflow args for source-agnostic station prompts");
-  lines.push(indent + "extra += \"\\n## Workflow args (JSON)\\n\";");
-  lines.push(indent + "extra += workflow_args_json + \"\\n\";");
-
-  //fragment
-  return lines.join("\n");
-
-//end emitFlowArgsContextAppend
-}
-
-/*
- * @description emit one station function (fn Name(flow) { … })
- * @param station - normalized station
- * @param ctx - compile context (base, argsLocals)
- * @returns Rhai source
- */
-function emitStationFunction(station, ctx) {
-
-  //variables
-  let lines = []; //source lines
-  let scope = null; //template scope
-  let promptBuild = ""; //extra body from prompt files
-  let schemaAppend = ""; //Additional Schemas rhai fragment
-  let argsAppend = ""; //workflow args JSON append
-  let name = station.name; //fn name
-
-  //template scope: args only (no step bindings in flow mode)
-  scope = {
-    argsLocals: ctx.argsLocals, //args
-    knownVars: {}, //no step bindings
-    itemAs: null, //no loop item
-    indexAs: null, //no loop index
-  };
-
-  //resolve bindings → paths (or legacy paths), then load + merge in order
-  promptBuild = templateMod.emitPromptBuild(
-    "extra",
-    loadPromptFiles(
-      resolvePromptList(
-        station.prompt,
-        ctx.promptRegistry,
-        "station " + name + ".prompt"
-      ),
-      ctx.base
-    ),
-    scope,
-    "    "
-  );
-
-  //fn Name(flow) or Name(flow, workflow_args_json) — Rhai fns do not capture outer lets
-  lines.push("//station: " + name);
-  if (flowHasArgsLocals(ctx)) {
-
-    //second param: JSON snapshot from top-level driver
-    lines.push("fn " + name + "(flow, workflow_args_json) {");
-
-  } else {
-
-    //flow only
-    lines.push("fn " + name + "(flow) {");
-
-  //end signature
-  }
-  lines.push(promptBuild.trimEnd());
-
-  //inject declared args as JSON (keeps prompt files free of hard-coded sources/paths)
-  argsAppend = emitFlowArgsContextAppend(ctx, "    ");
-
-  //append when present
-  if (argsAppend.length > 0) {
-
-    //args context
-    lines.push(argsAppend);
-
-  //end args append
-  }
-
-  //optional station schemas → Additional Schemas section on the prompt
-  schemaAppend = emitStationAdditionalSchemasAppend(
-    station,
-    ctx.loadedSchemas,
-    "    "
-  );
-
-  //append when present
-  if (schemaAppend.length > 0) {
-
-    //guidance block
-    lines.push(schemaAppend);
-
-  //end schema append
-  }
-
-  //optional capability / agent_type / label — re-call agent with overrides when needed
-  //v1: always use run_station; stamp label from station when not default
-  //capability_mode and agent_type on station: emit a local override of run_station inline when present
-  if (
-    typeof station.capability_mode === "string" ||
-    typeof station.agent_type === "string" ||
-    typeof station.label === "string"
-  ) {
-
-    //custom agent opts path (same usage bookkeeping as run_station)
-    lines.push("    phase(" + jsonToRhaiMod.emitRhaiString(name) + ");");
-    lines.push("    flow.current = " + jsonToRhaiMod.emitRhaiString(name) + ";");
-    lines.push(
-      "    flow = begin_station_visit(flow, " +
-      jsonToRhaiMod.emitRhaiString(name) +
-      ");"
-    );
-    lines.push("    let output = agent(");
-    lines.push("        station_prompt(" + jsonToRhaiMod.emitRhaiString(name) + ", flow, extra),");
-    lines.push("        #{");
-
-    //label
-    if (typeof station.label === "string") {
-
-      //author label
-      lines.push("            label: " + jsonToRhaiMod.emitRhaiString(station.label) + ",");
-
-    } else {
-
-      //default label = name
-      lines.push("            label: " + jsonToRhaiMod.emitRhaiString(name) + ",");
-
-    //end label
-    }
-
-    //capability
-    if (typeof station.capability_mode === "string") {
-
-      //mode
-      lines.push(
-        "            capability_mode: " +
-        jsonToRhaiMod.emitRhaiString(station.capability_mode) +
-        ","
-      );
-
-    } else {
-
-      //default read-only
-      lines.push("            capability_mode: \"read-only\",");
-
-    //end capability
-    }
-
-    //agent_type
-    if (typeof station.agent_type === "string") {
-
-      //type
-      lines.push(
-        "            agent_type: " +
-        jsonToRhaiMod.emitRhaiString(station.agent_type) +
-        ","
-      );
-
-    //end agent_type
-    }
-
-    //schema
-    lines.push("            output_schema: make_flow_schema(),");
-    lines.push("        }");
-    lines.push("    );");
-    lines.push(
-      "    apply_agent_result(" +
-      jsonToRhaiMod.emitRhaiString(name) +
-      ", flow, output)"
-    );
-
-  } else {
-
-    //default helper path
-    lines.push(
-      "    run_station(" +
-      jsonToRhaiMod.emitRhaiString(name) +
-      ", flow, extra)"
-    );
-
-  //end custom vs default
-  }
-
-  //close fn
-  lines.push("}");
-  lines.push("");
-
-  //joined
-  return lines.join("\n");
-
-//end emitStationFunction
-}
-
-/*
- * @description emit flow object, station functions, and next-dispatch driver
- * @param stations - normalized stations
- * @param ctx - compile context (includes payloadSchema?)
- * @returns Rhai source (body after meta/schemas/args)
- */
-function emitFlowBody(stations, ctx) {
-
-  //variables
-  let parts = []; //sections
-  let names = []; //station name list for flow.stations
-  let i = 0; //index
-  let payloadSchema = null; //optional inlined payload
-
-  //payload from context (loaded earlier)
-  if (ctx.payloadSchema) {
-
-    //inlined
-    payloadSchema = ctx.payloadSchema;
-
-  //end payload
-  }
-
-  //collect names for flow.stations array
-  i = 0;
-
-  //walk
-  while (i < stations.length) {
-
-    //name as Rhai string
-    names.push(jsonToRhaiMod.emitRhaiString(stations[i].name));
-
-    //next
-    i += 1;
-
-  //end name walk
-  }
-
-  //flow object at top of body (after meta in assemble order we emit flow after args)
-  parts.push("//flow object — stations drive phases, functions, and routing");
-  parts.push("let flow = #{");
-  parts.push("    stations: [" + names.join(", ") + "],");
-  parts.push("    log: [],");
-  parts.push("    current: (),");
-  parts.push("    next: (),");
-  parts.push("    msg: (),");
-  parts.push("    state: #{");
-  parts.push("        tokens: [],");
-  parts.push("        elapsed: [],");
-  parts.push("        token_total: 0,");
-  parts.push("        elapsed_total: 0,");
-  parts.push("        station_run: #{},");
-  parts.push("    },");
-  parts.push("    payload: (),");
-  parts.push("};");
-  parts.push("");
-
-  //schema + helpers (payload subschema inlined into envelope)
-  parts.push(emitMakeFlowSchemaFn(payloadSchema));
-  parts.push("");
-  parts.push(emitFlowStationHelpers());
-  parts.push("");
-
-  //one fn per station
-  i = 0;
-
-  //walk stations
-  while (i < stations.length) {
-
-    //emit fn
-    parts.push(emitStationFunction(stations[i], ctx));
-
-    //next
-    i += 1;
-
-  //end station fn walk
-  }
-
-  //encode args at top level (after station defs; before driver) for Fn.call second arg
-  parts.push(emitWorkflowArgsJsonLocal(ctx));
-
-  //driver: start at first station, dispatch by flow.next
-  parts.push("//driver: route by flow.next until null");
-  parts.push("flow.next = flow.stations[0];");
-  parts.push("while flow.next != () {");
-  parts.push("    log(\"Dispatching station: \" + flow.next);");
-  if (flowHasArgsLocals(ctx)) {
-
-    //pass JSON snapshot — station fns cannot see outer lets or args
-    parts.push("    flow = Fn(flow.next).call(flow, workflow_args_json);");
-
-  } else {
-
-    //flow only
-    parts.push("    flow = Fn(flow.next).call(flow);");
-
-  //end call arity
-  }
-  parts.push("}");
-  parts.push("");
-  parts.push("complete(#{");
-  parts.push("    flow: flow,");
-  parts.push("    flow_json: json_encode(flow),");
-  parts.push("});");
-  parts.push("");
-
-  //joined body
-  return parts.join("\n");
-
-//end emitFlowBody
-}
 
 /*
  * @description reject removed authoring surfaces (step mode, hand-authored phases)
@@ -2591,6 +1552,14 @@ function assertFlowOnlyWorkflow(workflow) {
   //end phases guard
   }
 
+  //payloadSchema is not part of the thread+posts dialect
+  if (workflow.payloadSchema !== undefined && workflow.payloadSchema !== null) {
+    throw new Error(
+      "workflow.payloadSchema does not exist in this dialect; use workflow.schemas " +
+      "and post attachments with schema keys"
+    );
+  }
+
 //end assertFlowOnlyWorkflow
 }
 
@@ -2603,21 +1572,24 @@ function assertFlowOnlyWorkflow(workflow) {
 function compileWorkflow(workflow, options) {
 
   //variables
-  let baseDir = ""; //absolute asset base (schemas/ + prompts/)
-  let loadedSchemas = null; //binding → schema object
-  let argsPreamble = null; //args source + locals
+  let baseDir = ""; //absolute pack root
+  let loadedSchemas = null; //binding → schema object (validate only)
+  let validatedArgs = null; //workflow.args after flat/station_dir checks
+  let schemaCatalog = null; //binding → bare *.schema.json
+  let stationsDir = ""; //absolute {base}/stations
   let ctx = null; //compile context
   let parts = []; //source sections
   let header = ""; //file header comment
   let rhai = ""; //full script
   let keywordSet = null; //reserved keywords
   let scanHits = null; //layer B findings
-  let si = 0; //scan index
+  let si = 0; //scan / station index
   let report = ""; //keyword error text
   let stations = null; //normalized stations
   let metaWorkflow = null; //workflow object for emitMeta
-  let bodySource = ""; //flow body
-  let promptRegistry = null; //workflow.prompts map or null
+  let bodySource = ""; //template-filled script body
+  let promptRegistry = null; //binding → bare *.prompt.md
+  let workflowJsonPath = ""; //stamped into IR for runtime load
 
   //options normalize
   if (!options || typeof options !== "object") {
@@ -2655,36 +1627,36 @@ function compileWorkflow(workflow, options) {
     //flow-only authoring surface
     assertFlowOnlyWorkflow(workflow);
 
-    //load schemas from {base}/schemas
-    loadedSchemas = loadSchemas(workflow.schemas, baseDir);
+    //args: flat values + required station_dir (runtime asset root)
+    validatedArgs = validateWorkflowArgs(workflow.args);
 
-    //args preamble
-    argsPreamble = emitArgsPreamble(workflow.args);
-
-    //top-level prompt registry (optional; stations use binding names when set)
+    //catalogs: bare filenames under station_dir / {base}/stations
+    schemaCatalog = normalizeSchemaCatalog(workflow.schemas);
     promptRegistry = normalizePromptRegistry(workflow.prompts);
+    if (!promptRegistry) {
+      throw new Error(
+        "workflow.prompts is required (binding → *.prompt.md filename under args.station_dir)"
+      );
+    }
 
-    //compile context
+    stationsDir = resolveStationsDir(baseDir);
+    assertPackAssetsOnDisk(schemaCatalog, promptRegistry, stationsDir);
+
+    //load + $ref-inline schemas for fail-closed validation (not grafted into Rhai)
+    loadedSchemas = loadSchemas(schemaCatalog, baseDir);
+
+    //compile context (keyword scan + station schema checks)
     ctx = {
-      argsLocals: argsPreamble.argsLocals, //template args
-      knownVars: {}, //unused in flow (kept for template API)
-      declaredLets: {}, //names already introduced with let
-      loadedSchemas: loadedSchemas, //schemas
-      payloadSchema: null, //optional payload
-      promptRegistry: promptRegistry, //binding → path or null
-      workflowArgs: workflow.args || null, //raw args def
-      base: baseDir, //prompts + schema root
-      keywordViolations: activeKeywordCtx.keywordViolations, //shared list
+      argsLocals: {},
+      knownVars: {},
+      declaredLets: {},
+      loadedSchemas: loadedSchemas,
+      payloadSchema: null,
+      promptRegistry: promptRegistry,
+      workflowArgs: validatedArgs,
+      base: baseDir,
+      keywordViolations: activeKeywordCtx.keywordViolations,
     };
-
-    //args are already let-bound in the preamble
-    Object.keys(argsPreamble.argsLocals).forEach(function markArgDeclared(argName) {
-
-      //arg local exists as let
-      ctx.declaredLets[argName] = true;
-
-    //end forEach
-    });
 
     //file header: mark IR as build artifact (analysis only; not an edit surface)
     header =
@@ -2693,42 +1665,60 @@ function compileWorkflow(workflow, options) {
       "// Suitable for analysis and debugging only. Do not edit this file.\n" +
       "// Authoring surface: workflow JSON (+ schemas + prompts). Recompile after changes.\n" +
       "// Hand-edits will be overwritten on the next compile and are not supported.\n" +
-      "// scriptType: flow\n" +
+      "// model: thread+posts (skinny forum-runner template)\n" +
       "// =============================================================================\n";
 
     //normalize stations
     stations = normalizeStations(workflow.stations);
 
+    //each station.prompt entry must be a prompts binding
+    for (si = 0; si < stations.length; si += 1) {
+      resolvePromptList(
+        stations[si].prompt,
+        promptRegistry,
+        "station " + stations[si].name + ".prompt"
+      );
+    }
+
     //station schemas[] must resolve against top-level workflow.schemas
     assertStationSchemasResolved(stations, loadedSchemas);
 
-    //optional payload schema (file under schemas/, $ref inlined)
-    ctx.payloadSchema = loadPayloadSchema(workflow, baseDir);
-
-    //meta with derived phases
+    //meta with derived phases (emitter also prepends Init)
     metaWorkflow = {
-      name: workflow.name, //name
-      description: workflow.description, //description
-      phases: phasesFromStations(stations), //from stations[]
+      name: workflow.name,
+      description: workflow.description,
+      phases: phasesFromStations(stations),
     };
 
-    //body: flow object + fns + driver
-    bodySource = emitFlowBody(stations, ctx);
+    // skinny emit: meta + workflow.json path only (catalogs/defs at run time)
+    workflowJsonPath =
+      typeof options.workflowPath === "string" && options.workflowPath.length > 0
+        ? options.workflowPath
+        : nodePath.join(baseDir, "workflow.json");
+    // Prefer a path relative to cwd when under the project (agent read_file friendly)
+    try {
+      const rel = nodePath.relative(process.cwd(), workflowJsonPath);
+      if (rel && !rel.startsWith("..") && !nodePath.isAbsolute(rel)) {
+        workflowJsonPath = rel.split(nodePath.sep).join("/");
+      } else {
+        workflowJsonPath = String(workflowJsonPath).split(nodePath.sep).join("/");
+      }
+    } catch (_e) {
+      workflowJsonPath = String(workflowJsonPath).split(nodePath.sep).join("/");
+    }
 
-    //assemble sections
+    bodySource = emitForumRunnerScript({
+      metaWorkflow: metaWorkflow,
+      workflowJsonPath: workflowJsonPath,
+    });
+
+    //assemble
     parts.push(header);
-    parts.push(emitMeta(metaWorkflow));
-    parts.push(emitSchemaLocals(loadedSchemas));
-    parts.push(argsPreamble.source);
     parts.push(bodySource);
 
     //full script
     rhai = parts.filter(function keepNonEmpty(section) {
-
-      //drop empty sections
       return typeof section === "string" && section.length > 0;
-
-    //end filter
     }).join("\n") + "\n";
 
     //layer B: scan emitted IR for keyword identifiers not on allowlist
@@ -2768,7 +1758,7 @@ function compileWorkflow(workflow, options) {
       workflowMd: emitWorkflowMarkdown(workflow), //always workflow.md content
       loadedSchemas: loadedSchemas, //for tests/debug
       base: baseDir, //resolved asset base
-      scriptType: "flow", //flow-only product
+      scriptType: "flow", //stations[] authoring; IR model is thread+posts
     };
 
   } finally {
@@ -2820,9 +1810,10 @@ function compileWorkflowFile(workflowPath, options) {
   //parse workflow JSON
   workflow = readJsonFile(absIn);
 
-  //compile with shared base
+  // compile with shared base; stamp absIn as workflow.json path (relativized in emit)
   result = compileWorkflow(workflow, {
-    base: baseDir, //schemas + prompts root
+    base: baseDir, // schemas + prompts root
+    workflowPath: absIn,
   });
 
   //default output: Grok project discovery path .grok/workflows/<name>.rhai under cwd
@@ -2908,7 +1899,6 @@ export default {
   emitWorkflowMarkdown: emitWorkflowMarkdown,
   resolveWorkflowMdPaths: resolveWorkflowMdPaths,
   readJsonFile: readJsonFile,
-  loadPromptFiles: loadPromptFiles,
   normalizePromptRegistry: normalizePromptRegistry,
   resolvePromptList: resolvePromptList,
   resolveBaseDir: resolveBaseDir,
