@@ -1,6 +1,10 @@
-# example-birthday-issues (thread+posts)
+# example-birthday-issues
 
-Issue-surfacing demo aligned to **thread + posts**.
+Issues-mining demo: **Intake → Formulation ⇄ Validation → Presentation → QA**.
 
-Formulation/Validation `max_visits: 12`. Others default 1.
-Hybrid cap handling: Validation must read remaining visits and set `routing_rationale`.
+Stations share one durable **workflow context** (toolbox `thread-get-posts` / `thread-add-post`). Common prompt is **Operational Guidance**; the orchestrator concatenates Guidance + Input + Station Instructions before each `agent()` call.
+
+- **Intake** curates numbered verbatim Id/Text tables (`A.00001`, …).
+- **Formulation** `max_visits: 3` — prefer `--treatment replace` after the first visit; cite curated Ids.
+- **Validation** treats Formulation `mode: "capped"` as coverage-complete, then Id-grounds issues.
+- **Presentation / QA** preserve Evidence Id+quote in the final Markdown.

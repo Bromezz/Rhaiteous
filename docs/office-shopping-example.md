@@ -1,28 +1,27 @@
-# Office-shopping example (flow)
+# Office-shopping example
 
 **Canonical pack:** [`examples/example-office-shopping/`](../examples/example-office-shopping/)  
 **Grok id:** `example-office-shopping`
 
-Five-station flow: Intake → Inventory → Audit → Procurement → Purchasing.
+Five-station cycle with shared **workflow context**: Intake → Inventory → Audit → Procurement → Purchasing.
 
 ## Layout
 
 ```text
 examples/example-office-shopping/
   workflow.json
-  schema.json                 # flow.payload
   stations/
-    common.md
-    intake.md + intake.schema.json
-    inventory.md + inventory.schema.json
-    audit.md + audit.schema.json
-    procurement.md + procurement.schema.json
-    purchasing.md + purchasing.schema.json
+    common.prompt.md          # Operational Guidance
+    intake.prompt.md + intake.schema.json
+    inventory.prompt.md + inventory.schema.json
+    audit.prompt.md + audit.schema.json
+    procurement.prompt.md + procurement.schema.json
+    purchasing.prompt.md + purchasing.schema.json
   input/
   output/
 ```
 
-Each station has its **own** schema file (station-named, no product-prefix clutter). `workflow.md` / `workflow.rhai` are compile products.
+Each station has its **own** schema file. `workflow.md` / `workflow.rhai` are compile products. Mid-run persistence uses `tools/toolbox/rhaiteous-toolbox.mjs`.
 
 ## Compile / run
 
@@ -39,12 +38,12 @@ npx rhaiteous ./examples/example-office-shopping/workflow.json \
 
 ## Stations
 
-| Station | Schema | Capability |
-|---------|--------|------------|
-| Intake | `stations/intake.schema.json` | read-only |
-| Inventory | `stations/inventory.schema.json` | read-only |
-| Audit | `stations/audit.schema.json` | read-only |
-| Procurement | `stations/procurement.schema.json` | read-only |
-| Purchasing | `stations/purchasing.schema.json` | execute |
+| Station | Schema | Notes |
+|---------|--------|-------|
+| Intake | `intake.schema.json` | Read `args.requests_dir`; `--treatment append` |
+| Inventory | `inventory.schema.json` | Line items from Intake posts |
+| Audit | `audit.schema.json` | Verdicts per line |
+| Procurement | `procurement.schema.json` | Vendor / price |
+| Purchasing | `purchasing.schema.json` | May write `report.md` under `args.out_dir` |
 
-See [examples/README.md](../examples/README.md) and [workflow-json.md](./workflow-json.md).
+Default `max_visits` is **1** (linear). See [examples/README.md](../examples/README.md) and [workflow-json.md](./workflow-json.md).

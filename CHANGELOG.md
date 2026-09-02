@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Forum post shape:** `metadata.from` / `metadata.to` (was root `to` + `metadata.station`); `message.{ mime, body, attachments }` (was root `text` + `attachments`); attachment type field is universally **`mime`** (not `media_type`).
+- **Workflow-context + toolbox (breaking vs in-memory Finalization):** stations persist via `tools/toolbox/rhaiteous-toolbox.mjs` (`thread-get-posts` / `thread-add-post`). The skinny forum-runner concatenates **Operational Guidance + Input + Station Instructions** and routes on the returned post only — no mid-run `json_encode(this.conversation)` inline, no **Rhaiteous Finalization** phase.
+- **Init:** creates the workflow context with `thread-create` and loads prompt texts into the orchestrator (`tools/init.mjs` is a thin wrapper around `thread-create`).
+- **Examples:** both seed packs use Operational Guidance commons; office-shopping stations aligned to toolbox get/add; birthday Formulation/Validation/Presentation/QA keep curated Id + Evidence rules.
+- **Forum post shape:** `metadata.from` / `metadata.to`; `message.{ mime, body, attachments }`; optional `metadata.mode` for cap-out / forced end.
+
+### Added
+
+- `tools/toolbox/` — `rhaiteous-toolbox.mjs`, `thread-create`, `thread-get-posts`, `thread-add-post`, shared `lib.mjs` + config (`RHAITEOUS_THREADS_ROOT` override)
+- Optional pack `finalize.mjs` (not invoked by the skinny runner) and optional `tools/write-thread.mjs` export helper
+- **`example-knock-knock`** seed pack — Joker ⇄ Audience classic knock-knock (max_visits 3 each, append only)
 
 ### Removed
 
+- Orchestrator-owned mid-run / Finalization writes of `thread.json`
 - **`example-thread-validation`** seed pack (validation fixture only; not an enduring product example).
 
 ## [0.5.0] — 2026-08-20

@@ -1,6 +1,7 @@
 {
   "name": "example-birthday-issues",
-  "description": "Thread+posts issues mining: Intake → Formulation ⇄ Validation → Presentation → QA.",
+  "description": "Issues mining with workflow context: Intake → Formulation ⇄ Validation → Presentation → QA.",
+  "finalizer": "finalize.mjs",
   "args": {
     "station_dir": "workflows/example-birthday-issues/stations",
     "source_candidates": [
@@ -14,7 +15,7 @@
       }
     ],
     "out_dir": "workflows/example-birthday-issues/output",
-    "curated": null,
+    "curated": "workflows/example-birthday-issues/output/curated.md",
     "flow_json_name": "example-birthday-issues-thread.json",
     "issues_md_name": "example-birthday-issues-issues.md",
     "report_title": "Birthday planning issues"
@@ -37,40 +38,43 @@
   "stations": [
     {
       "name": "Intake",
-      "uiDescription": "Verify sources; curate corpus",
+      "uiDescription": "Verify sources; curate numbered verbatim corpus",
       "prompt": ["thread_common", "intake"],
       "schemas": ["intake"],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "max_visits": 1
     },
     {
       "name": "Formulation",
-      "uiDescription": "Surface issues from curated only",
+      "uiDescription": "Surface issues from curated Ids only",
       "prompt": ["thread_common", "formulation"],
       "schemas": ["formulation"],
-      "capability_mode": "read-only",
-      "max_visits": 12
+      "capability_mode": "read-write",
+      "max_visits": 3
     },
     {
       "name": "Validation",
-      "uiDescription": "Coverage gate then validity",
+      "uiDescription": "Coverage gate then Id-grounded validity",
       "prompt": ["thread_common", "validation"],
       "schemas": ["validation"],
-      "capability_mode": "read-only",
+      "capability_mode": "read-write",
       "max_visits": 12
     },
     {
       "name": "Presentation",
-      "uiDescription": "Write thread + issues report",
+      "uiDescription": "Issues report with Evidence Id+quote",
       "prompt": ["thread_common", "presentation"],
       "schemas": ["presentation"],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "max_visits": 12
     },
     {
       "name": "QA",
-      "uiDescription": "Polish wording",
+      "uiDescription": "Polish wording; preserve Evidence",
       "prompt": ["thread_common", "qa"],
       "schemas": ["qa"],
-      "capability_mode": "read-write"
+      "capability_mode": "read-write",
+      "max_visits": 12
     }
   ]
 }

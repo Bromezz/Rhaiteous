@@ -26,6 +26,7 @@ nodeTest.test("resolveSeedCatalog finds example-* packs", function testCatalog()
   const cat = initMod.resolveSeedCatalog();
   nodeAssert.ok(cat.seedIds.includes("example-office-shopping"));
   nodeAssert.ok(cat.seedIds.includes("example-birthday-issues"));
+  nodeAssert.ok(cat.seedIds.includes("example-knock-knock"));
   nodeAssert.ok(cat.seedIds.every(function p(id) {
     return id.startsWith("example-");
   }));

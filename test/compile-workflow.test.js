@@ -17,27 +17,25 @@ const shoppingPack = nodePath.join(repoRoot, "examples", "example-office-shoppin
 const shoppingPath = nodePath.join(shoppingPack, "workflow.json");
 const issuesPack = nodePath.join(repoRoot, "examples", "example-birthday-issues");
 const issuesPath = nodePath.join(issuesPack, "workflow.json");
+const knockPack = nodePath.join(repoRoot, "examples", "example-knock-knock");
+const knockPath = nodePath.join(knockPack, "workflow.json");
 
 function assertForumRunnerIr(rhai) {
   nodeAssert.match(rhai, /BUILD ARTIFACT/);
-  nodeAssert.match(rhai, /skinny forum-runner template/);
+  nodeAssert.match(rhai, /workflow-context orchestration|skinny forum-runner template/);
   nodeAssert.match(rhai, /let meta = #\{/);
   nodeAssert.match(rhai, /let default_workflow_json = /);
-  nodeAssert.match(rhai, /fn load_workflow_doc\(/);
-  nodeAssert.match(rhai, /fn prepare_assets\(/);
-  nodeAssert.match(rhai, /fn run_station\(/);
-  nodeAssert.match(rhai, /fn apply_station_result\(/);
-  nodeAssert.match(rhai, /fn rhaiteous_initialization\(/);
-  nodeAssert.match(rhai, /fn persist_thread_file\(/);
-  nodeAssert.match(rhai, /let init_script = /);
-  nodeAssert.match(rhai, /phase\("Rhaiteous Initialization"\)/);
-  nodeAssert.match(rhai, /title: "Rhaiteous Initialization"/);
-  nodeAssert.match(rhai, /Conversation thread \(authoritative\)/);
+  nodeAssert.match(rhai, /let toolbox_script = /);
+  nodeAssert.match(rhai, /fn build_station_prompt\(/);
+  nodeAssert.match(rhai, /fn build_input_section\(/);
+  nodeAssert.match(rhai, /thread-create/);
+  nodeAssert.match(rhai, /rhaiteous-toolbox/);
+  nodeAssert.match(rhai, /## Station Instructions/);
+  nodeAssert.match(rhai, /## Input/);
   nodeAssert.match(rhai, /context_only/);
-  nodeAssert.match(rhai, /station_dir/);
-  nodeAssert.match(rhai, /let ctx = #\{/);
-  nodeAssert.match(rhai, /"thread"/);
-  nodeAssert.match(rhai, /do \{/);
+  nodeAssert.match(rhai, /context_id/);
+  nodeAssert.match(rhai, /while next_name/);
+  nodeAssert.match(rhai, /phase\("Init"\)/);
   // catalogs / station_defs / default_args must NOT be stamped
   nodeAssert.doesNotMatch(rhai, /let default_args =/);
   nodeAssert.doesNotMatch(rhai, /let schema_catalog =/);
@@ -46,7 +44,13 @@ function assertForumRunnerIr(rhai) {
   nodeAssert.doesNotMatch(rhai, /write_scratch_file\("thread\.json"/);
   nodeAssert.doesNotMatch(rhai, /fn make_flow_schema/);
   nodeAssert.doesNotMatch(rhai, /while flow\.next/);
-  nodeAssert.doesNotMatch(rhai, /===== \[/);
+  nodeAssert.doesNotMatch(rhai, /json_encode\(this\.conversation\)/);
+  nodeAssert.doesNotMatch(rhai, /Conversation so far \(complete, inline\)/);
+  nodeAssert.doesNotMatch(rhai, /let write_thread_script = /);
+  nodeAssert.doesNotMatch(rhai, /phase\("Rhaiteous Finalization"\)/);
+  nodeAssert.doesNotMatch(rhai, /fn rhaiteous_finalization\(/);
+  nodeAssert.doesNotMatch(rhai, /fn persist_thread_file\(/);
+  nodeAssert.doesNotMatch(rhai, /phase\("Rhaiteous Initialization"\)/);
 }
 
 function writeMinimalPack(tmpDir) {
@@ -89,6 +93,21 @@ nodeTest.test("compiles example-birthday-issues as forum-runner", function testI
   nodeAssert.match(result.rhai, /title: "Formulation"/);
   nodeAssert.match(result.rhai, /title: "Validation"/);
   nodeAssert.match(result.workflowMd, /\/workflow example-birthday-issues/);
+});
+
+nodeTest.test("compiles example-knock-knock as forum-runner", function testKnock() {
+  const workflow = compileMod.readJsonFile(knockPath);
+  const result = compileMod.compileWorkflow(workflow, {
+    base: knockPack,
+    workflowPath: knockPath,
+  });
+  nodeAssert.equal(result.name, "example-knock-knock");
+  assertForumRunnerIr(result.rhai);
+  nodeAssert.match(result.rhai, /title: "Joker"/);
+  nodeAssert.match(result.rhai, /title: "Audience"/);
+  nodeAssert.match(result.workflowMd, /\/workflow example-knock-knock/);
+  nodeAssert.equal(workflow.stations[0].max_visits, 3);
+  nodeAssert.equal(workflow.stations[1].max_visits, 3);
 });
 
 nodeTest.test("rejects payloadSchema", function testNoPayloadSchema() {
@@ -254,7 +273,7 @@ nodeTest.test("does not emit pack args into IR", function testNoDefaultArgsEmit(
   });
   nodeAssert.doesNotMatch(result.rhai, /out_dir: "workflows\/example-birthday-issues\/output"/);
   nodeAssert.doesNotMatch(result.rhai, /let default_args/);
-  nodeAssert.match(result.rhai, /fn load_workflow_doc/);
+  nodeAssert.match(result.rhai, /fn build_station_prompt/);
 });
 
 nodeTest.test("rejects nested default under args", function testRejectNestedDefault() {

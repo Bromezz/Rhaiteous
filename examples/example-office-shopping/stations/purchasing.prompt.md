@@ -1,16 +1,32 @@
 ## Purchasing
 
-Record transactions. Schema `purchasing`.
+### Prior stop signal
 
-### Required file outputs (user-visible)
+If the latest post has `mode: "capped"` / `fatal` / `benched`: follow Workflow Instructions; prefer finishing a useful summary from what exists when Audit/Procurement left work, else `to: []`.
 
-Using **read-write/execute** tools, write under `args.out_dir` (create the directory if needed):
+### Process
 
-1. **`thread.json`** — the full run result you can assemble from the conversation so far plus this post’s purchasing content: include `thread` (schemas + all posts including yours) and `control` if present in the prompt/budget context. Prefer writing the complete portable forum artifact.
-2. **`report.md`** — short human summary: company, cycle, each station one-liner, items purchased, totals if known.
+`--treatment append`.
 
-If you cannot reconstruct prior posts verbatim, still write `report.md` with purchasing results and note that `thread.json` is best-effort.
+Record the purchases for this cycle from the workflow context.
 
-Set `metadata.to` to `[]` (terminal).
-`metadata.routing_rationale`: "Terminal purchasing complete; wrote out_dir artifacts."
-Put narrative in `message.body` with `message.mime` = `text/markdown`.
+Structured result: schema key **`purchasing`**.
+
+### Files you may write
+
+Under `args.out_dir` only (create that folder if needed):
+
+1. **`report.md`** — a short human summary for non-technical readers: company, cycle, what each step decided, what was purchased, and totals if known. Use clear everyday language.
+
+### Files you must not write
+
+- Do **not** write `thread.json`, `thread-*.json`, conversation dumps, or any full-run archive (the shared **workflow context** is persisted only via the Rhaiteous toolbox).
+- Do **not** write any file other than **`report.md`**.
+
+Set `metadata.to` to `[]` (this is the last step).
+`metadata.routing_rationale`: one plain sentence that purchasing finished and the summary report was written.
+Put a short narrative in `message.body` (`message.mime` = `text/markdown`).
+
+### Own cap-out
+
+`mode: "capped"`, `to: []`.

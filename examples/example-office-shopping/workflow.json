@@ -1,6 +1,7 @@
 {
   "name": "example-office-shopping",
-  "description": "Thread+posts office supply cycle: Intake → Inventory → Audit → Procurement → Purchasing.",
+  "description": "Office supply cycle with workflow context: Intake → Inventory → Audit → Procurement → Purchasing.",
+  "finalizer": "finalize.mjs",
   "args": {
     "station_dir": "workflows/example-office-shopping/stations",
     "requests_dir": "workflows/example-office-shopping/input",
@@ -29,35 +30,40 @@
       "uiDescription": "collect requests",
       "prompt": ["thread_common", "intake"],
       "schemas": ["intake"],
-      "capability_mode": "read-only"
+      "capability_mode": "all",
+      "max_visits": 1
     },
     {
       "name": "Inventory",
       "uiDescription": "compile line items",
       "prompt": ["thread_common", "inventory"],
       "schemas": ["inventory"],
-      "capability_mode": "read-only"
+      "capability_mode": "all",
+      "max_visits": 1
     },
     {
       "name": "Audit",
       "uiDescription": "challenge each line",
       "prompt": ["thread_common", "audit"],
       "schemas": ["audit"],
-      "capability_mode": "read-only"
+      "capability_mode": "all",
+      "max_visits": 1
     },
     {
       "name": "Procurement",
       "uiDescription": "vendor picks",
       "prompt": ["thread_common", "procurement"],
       "schemas": ["procurement"],
-      "capability_mode": "read-only"
+      "capability_mode": "all",
+      "max_visits": 1
     },
     {
       "name": "Purchasing",
-      "uiDescription": "record purchases",
+      "uiDescription": "record purchases; write report.md",
       "prompt": ["thread_common", "purchasing"],
       "schemas": ["purchasing"],
-      "capability_mode": "execute"
+      "capability_mode": "all",
+      "max_visits": 1
     }
   ]
 }

@@ -6,6 +6,9 @@ npm-debug.log*
 # Local experimental Rhai / scratch (not for VC)
 experiments/
 
+# Runtime workflow-context dirs (toolbox thread-create)
+threads/
+
 # Option B: generated at prepack from examples/example-* (npm tarball only)
 # Also the host mount name if you use this repo as a Grok project — keep local.
 workflows/
@@ -28,5 +31,8 @@ examples/**/output/**
 .grok/workflows/import-probe-*.rhai
 .grok/workflows/probe_lib.rhai
 .grok/workflows/lib/
+.grok/workflows/rhai-fs-probe.rhai
+.grok/workflows/npm-*.rhai
+.grok/workflows/_pre-pull-backup-*/
 probe_lib.rhai
 _run_shop_prompt.txt

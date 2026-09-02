@@ -1,7 +1,7 @@
 /*
- * Skinny forum-runner emitter: stamp meta + workflow.json path into the
- * shared Rhai template. Catalogs, station defs, and arg defaults are loaded
- * at run time from workflow.json — not grafted here.
+ * Skinny forum-runner emitter: stamp meta + workflow.json path + toolbox
+ * into the shared Rhai template. Catalogs/prompts load at Init; stations
+ * get Operational Guidance + Input + Station Instructions concatenated.
  */
 
 import nodeFs from "node:fs";
@@ -51,28 +51,21 @@ function emitMetaStatement(metaWorkflow) {
       return p.title === title;
     });
   };
-  if (!hasPhase("Rhaiteous Initialization")) {
+  if (!hasPhase("Init")) {
     metaObj.phases = [
       {
-        title: "Rhaiteous Initialization",
-        detail: "detect runtime; create timestamped thread file",
+        title: "Init",
+        detail: "create workflow context; load Operational Guidance and station prompts",
       },
     ].concat(metaObj.phases);
   }
-  if (!hasPhase("Init")) {
-    // Insert workflow-load Init immediately after Rhaiteous Initialization
-    const out = [];
-    for (let i = 0; i < metaObj.phases.length; i++) {
-      out.push(metaObj.phases[i]);
-      if (metaObj.phases[i].title === "Rhaiteous Initialization") {
-        out.push({
-          title: "Init",
-          detail: "load workflow.json, schemas, and prompts",
-        });
-      }
-    }
-    metaObj.phases = out;
-  }
+  // Drop legacy phase titles
+  metaObj.phases = metaObj.phases.filter(function (p) {
+    return (
+      p.title !== "Rhaiteous Initialization" &&
+      p.title !== "Rhaiteous Finalization"
+    );
+  });
   return "let meta = " + jsonToRhaiMod.jsonToRhai(metaObj, "") + ";";
 }
 
@@ -99,7 +92,8 @@ function relativizeToCwd(abs) {
  * @param {object} opts.metaWorkflow
  * @param {string} opts.workflowJsonPath workspace-relative path to workflow.json
  * @param {string} [opts.packWorkflowPath] deprecated alias of workflowJsonPath
- * @param {string} [opts.initScriptPath] path to tools/init.mjs
+ * @param {string} [opts.toolboxScriptPath] path to tools/toolbox/rhaiteous-toolbox.mjs
+ * @param {string} [opts.writeThreadScriptPath] ignored (legacy)
  * @returns {string} full Rhai source (no file header)
  */
 export function emitForumRunnerScript(opts) {
@@ -116,17 +110,22 @@ export function emitForumRunnerScript(opts) {
   }
 
   const packageRoot = nodePath.resolve(here, "..");
-  const defaultInit = nodePath.join(packageRoot, "tools", "init.mjs");
-  const initAbs =
-    typeof opts.initScriptPath === "string" && opts.initScriptPath.length > 0
-      ? opts.initScriptPath
-      : defaultInit;
-  const initRel = relativizeToCwd(initAbs);
+  const defaultToolbox = nodePath.join(
+    packageRoot,
+    "tools",
+    "toolbox",
+    "rhaiteous-toolbox.mjs"
+  );
+  const toolboxAbs =
+    typeof opts.toolboxScriptPath === "string" && opts.toolboxScriptPath.length > 0
+      ? opts.toolboxScriptPath
+      : defaultToolbox;
+  const toolboxRel = relativizeToCwd(toolboxAbs);
 
   const replacements = {
     "@@META@@": meta,
     "@@WORKFLOW_JSON@@": jsonToRhaiMod.emitRhaiString(workflowJsonPath),
-    "@@INIT_SCRIPT@@": jsonToRhaiMod.emitRhaiString(initRel),
+    "@@TOOLBOX_SCRIPT@@": jsonToRhaiMod.emitRhaiString(toolboxRel),
   };
 
   for (const marker of Object.keys(replacements)) {

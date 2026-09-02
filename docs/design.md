@@ -24,9 +24,13 @@ Compile: Rhaiteous (this project; CLI: rhaiteous)
 Run:     Grok Build workflow host
 ```
 
-Rhaiteous is **flow-only**: `stations[]` → `meta.phases` + one station `fn` per entry + shared `flow` envelope + `while flow.next` driver. Stations may list `schemas` for best-effort **Additional Schemas** guidance. Optional **`payloadSchema`** is compile-time `$ref`-inlined into the host-checked **`flow.payload`**.
+Rhaiteous is **station-flow only**: author `stations[]` in JSON; the compiler emits a skinny **forum-runner** Rhai script. At run time:
 
-Linear `steps[]` / `scriptType: "step"` were removed; multi-agent pipelines are expressed as stations with agent-owned routing and payload.
+1. **Init** creates a durable **workflow context** via the Rhaiteous toolbox (`thread-create`) and loads Operational Guidance + station prompt texts into the orchestrator.
+2. Each station `agent()` receives **Operational Guidance + Input + Station Instructions** (concatenated by the orchestrator — stations do not `read_file` those prompts themselves).
+3. Station agents **persist** with the toolbox (`thread-get-posts` / `thread-add-post`) and return **exactly one post**; the Rhai driver **routes** on `metadata.to`.
+
+Linear `steps[]` / `scriptType: "step"` and **`payloadSchema` / `flow.payload`** were removed. Multi-agent pipelines are stations with agent-owned persistence and routing.
 
 ## Goals
 
@@ -53,7 +57,8 @@ Linear `steps[]` / `scriptType: "step"` were removed; multi-agent pipelines are 
 | `schema-inline.js` | Compile-time JSON Schema `$ref` resolution (validate/fail-closed) |
 | `compile-workflow.js` | Workflow validation + skinny IR emit (forum-runner template) |
 | `emit-thread-workflow.js` | Fills `templates/forum-runner.rhai.template` splices |
-| `templates/forum-runner.rhai.template` | Shared Rhai body (init thread, load assets, stations) |
+| `templates/forum-runner.rhai.template` | Shared Rhai body (Init context + prompt load; station loop) |
+| `tools/toolbox/` | Workflow-context CLI (`thread-create` / `thread-get-posts` / `thread-add-post`) |
 | `cli.js` | `parseArgs`, exit codes, stdout/stderr policy |
 | `init-project.js` | Copy example workflows into a host project |
 | `rhai-keywords.js` | Load/check shipped Rhai keyword list; format multi-violation reports |
@@ -63,17 +68,17 @@ Linear `steps[]` / `scriptType: "step"` were removed; multi-agent pipelines are 
 
 1. Workflow lists `schemas` / `prompts` as bindings → bare filenames under `stations/`  
 2. Compiler loads schemas and **inlines `$ref`s** for fail-closed validation (not grafted into Rhai as large literals)  
-3. Skinny emit stamps `meta`, default `workflow.json` path, and `tools/init.mjs` path into the forum-runner template  
-4. At run time the script loads `workflow.json`, schemas, and prompts; stations use a thread file under `threads/`  
+3. Skinny emit stamps `meta`, default `workflow.json` path, and `tools/toolbox/rhaiteous-toolbox.mjs` into the forum-runner template  
+4. At run time **Init** (an agent) reads `workflow.json`, creates the workflow context via toolbox, and returns prompt texts; the orchestrator concatenates Guidance + Input + Station Instructions per station  
 
 Authors never maintain the Rhai form. CLI `-b` / `--base` is the workflow directory (contains `stations/`).
 
-### Flow / routing pipeline
+### Routing pipeline
 
-- `flow.stations` is the ordered station name list  
-- Each visit: agent returns the **full flow** object under the envelope schema  
-- Default successor: next name after `flow.current` in `flow.stations`  
-- Conditional re-entry / early stop: station prompts set `flow.next` / `flow.msg`  
+- Init returns the ordered `stations` roster (and caps)  
+- Each visit: station agent returns **one post**; driver follows single `metadata.to` until terminal (`[]` / empty)  
+- Caps / `benched` / append vs replace are enforced by **Operational Guidance** + toolbox (`station_run`, `--no-count`, `mode: capped`), not by silent orchestrator rewrites of already-persisted posts  
+- Optional helpers (`tools/write-thread.mjs`, pack `finalize.mjs`) are **not** invoked by the skinny runner; use them only for manual export / pack post-process  
 
 ## Dialect philosophy
 

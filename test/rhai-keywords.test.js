@@ -54,12 +54,12 @@ nodeTest.test("example-office-shopping has no keyword violations", function test
     base: shoppingPack, //pack assets
   });
 
-  //rhai produced (skinny forum-runner — stations dispatched by name)
+  //rhai produced (skinny forum-runner — workflow-context orchestration)
   nodeAssert.match(result.rhai, /let meta = #\{/);
-  nodeAssert.match(result.rhai, /make_post_schema/);
+  nodeAssert.match(result.rhai, /let toolbox_script = /);
   nodeAssert.match(result.rhai, /title: "Intake"/);
-  nodeAssert.match(result.rhai, /fn run_station\(/);
-  nodeAssert.match(result.rhai, /fn load_workflow_doc\(/);
+  nodeAssert.match(result.rhai, /fn build_station_prompt\(/);
+  nodeAssert.match(result.rhai, /thread-create/);
 
 //end testCleanExample
 });
@@ -150,7 +150,7 @@ nodeTest.test("prompt text containing keywords is allowed", function testStringO
       { base: tmpDir }
     );
 
-    nodeAssert.match(result.rhai, /fn prepare_assets\(/);
+    nodeAssert.match(result.rhai, /fn build_station_prompt\(/);
     nodeAssert.doesNotMatch(result.rhai, /switch and match/);
   } finally {
     nodeFs.rmSync(tmpDir, { recursive: true, force: true });

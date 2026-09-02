@@ -35,9 +35,9 @@ workflow.rhai + workflow.md  +  optional .grok/workflows/<name>.rhai
 
 | Concern | Without Rhaiteous | With Rhaiteous |
 |--------|-------------------|----------------|
-| Orchestration | Hand-written Rhai | Declarative JSON `stations[]` + shared `flow` |
-| Output contracts | `#{ "type": "object", ... }` in Rhai | Standard `.schema.json` + optional `payloadSchema` |
-| Multiple schemas | Copy/paste maps | Named bindings + station guidance schemas |
+| Orchestration | Hand-written Rhai | Declarative JSON `stations[]` + skinny forum-runner |
+| Shared state | Ad-hoc prompts / dumps | Durable **workflow context** + toolbox (`thread-get-posts` / `thread-add-post`) |
+| Output contracts | `#{ "type": "object", ... }` in Rhai | Standard `.schema.json` on post attachments |
 | Diffs / review | Generated-looking IR | Review JSON + schemas + Markdown prompts; recompile |
 
 Rhai remains what Grok executes. You maintain the authoring surface.
@@ -173,38 +173,32 @@ In a **pack**, declare schemas by **binding → path under the pack** (one schem
 
 ```json
 {
-  "payloadSchema": "schema.json",
   "schemas": {
-    "intake": "stations/intake.schema.json",
-    "inventory": "stations/inventory.schema.json",
-    "audit": "stations/audit.schema.json",
-    "procurement": "stations/procurement.schema.json",
-    "purchasing": "stations/purchasing.schema.json"
+    "intake": "intake.schema.json",
+    "inventory": "inventory.schema.json"
+  },
+  "prompts": {
+    "thread_common": "common.prompt.md",
+    "intake": "intake.prompt.md"
   },
   "stations": [
     {
       "name": "Intake",
-      "prompt": ["flow_common", "intake"],
-      "schemas": ["intake"]
+      "prompt": ["thread_common", "intake"],
+      "schemas": ["intake"],
+      "capability_mode": "all"
     }
   ]
 }
 ```
 
-Each station should list its own schema binding (even a permissive `additionalProperties: true` object). Schemas appear under **Additional Schemas** in the station prompt; the host-checked payload uses `payloadSchema`.
+Each station should list its own schema binding (even a permissive `additionalProperties: true` object). At run time, schemas are loaded into the **workflow context**; structured work lives in post attachments keyed by those bindings.
 
 ### Prompt files
 
-Station `prompt` arrays list **binding names** (via top-level `prompts`) or file paths under `{base}/prompts/` (convention: **Markdown** `.md`). Files are loaded at compile time, concatenated (each prefaced with a banner), then `{{templates}}` are expanded. Missing files fail the compile.
+Station `prompt` arrays list **binding names** (via top-level `prompts`) under pack `stations/` (Markdown `.md`). The common / `thread_common` file is **Operational Guidance**; station files are **Station Instructions**. The orchestrator concatenates Guidance + Input + Station Instructions before each `agent()` call. Missing files fail closed at Init.
 
-```text
-===== [intake.md] =====
-…file body…
-```
-
-You never hand-author the Rhai form of those schemas or prompt bodies.
-
-See the [office-shopping example](./docs/office-shopping-example.md) for five schemas and five prompt files in one pipeline.
+See the [office-shopping example](./docs/office-shopping-example.md) for a five-station pack.
 
 ### Default Rhai output (project location)
 
@@ -236,14 +230,14 @@ Product demos are **workflow packs** under [`examples/`](./examples/). Names alw
 
 | Pack | Grok id | What it shows |
 |------|---------|----------------|
+| [`example-knock-knock/`](./examples/example-knock-knock/) | `example-knock-knock` | Joker ⇄ Audience knock-knock (toolbox get/add, caps 3/3) |
 | [`example-office-shopping/`](./examples/example-office-shopping/) | `example-office-shopping` | Intake → Inventory → Audit → Procurement → Purchasing |
 | [`example-birthday-issues/`](./examples/example-birthday-issues/) | `example-birthday-issues` | Curated corpus + Formulation ⇄ Validation → Presentation → QA |
 
 ```text
 examples/example-office-shopping/
   workflow.json      # authoring (name = example-office-shopping)
-  schema.json        # payload
-  stations/          # prompts + station schemas
+  stations/          # Operational Guidance + station prompts + schemas
   input/             # sample sources
   output/            # runtime (empty in git)
 ```
@@ -275,9 +269,8 @@ Top-level document:
 | `args` | no | Launch args; value after key is the default; `true` for required |
 | `schemas` | no | Binding → path under pack base (`schemas/` or pack root / `stations/`) |
 | `prompts` | no | Binding → path under `prompts/` or pack `stations/` |
-| `payloadSchema` | no | Path for `flow.payload` schema (e.g. `schema.json`) |
 
-**Station fields (v1):** `name`, `prompt`, optional `schemas`, `uiDescription`, `capability_mode`, `agent_type`, `label`.
+**Station fields:** `name`, `prompt`, optional `schemas`, `uiDescription`, `capability_mode`, `agent_type`, `label`, `max_visits`.
 
 Full field reference: **[docs/workflow-json.md](./docs/workflow-json.md)**.
 

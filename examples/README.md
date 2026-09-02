@@ -4,6 +4,7 @@ Product demo workflows, **versioned in git** under this directory.
 
 | Pack directory | Workflow `name` / Grok id | Role |
 |----------------|---------------------------|------|
+| [`example-knock-knock/`](./example-knock-knock/) | `example-knock-knock` | **Toolbox dialogue** — Joker ⇄ Audience knock-knock (caps 3/3, append only) |
 | [`example-office-shopping/`](./example-office-shopping/) | `example-office-shopping` | **List development** — requests → challenged shopping list → buy |
 | [`example-birthday-issues/`](./example-birthday-issues/) | `example-birthday-issues` | **Issue surfacing** — curated corpus → issues ↔ challenge → report |
 
@@ -17,7 +18,7 @@ Each pack has a conceptual **`README.md`** (what the workflow is *for*). Generat
 
 ```text
 examples/example-<name>/
-  workflow.json      # authoring (forum / thread+posts)
+  workflow.json      # authoring (workflow-context + toolbox)
   stations/          # one .md + one .schema.json per station (station-named)
   input/             # sample sources (shipped in npm seeds)
   output/            # runtime (empty in git)

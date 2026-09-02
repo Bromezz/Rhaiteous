@@ -1,0 +1,37 @@
+{
+  "name": "example-knock-knock",
+  "description": "Classic knock-knock dialogue: Joker ⇄ Audience until the punchline, then a laugh. Caps 3/3; append only.",
+  "finalizer": "finalize.mjs",
+  "args": {
+    "station_dir": "workflows/example-knock-knock/stations",
+    "out_dir": "workflows/example-knock-knock/output",
+    "joke_theme": "classic"
+  },
+  "schemas": {
+    "joker": "joker.schema.json",
+    "audience": "audience.schema.json"
+  },
+  "prompts": {
+    "thread_common": "common.prompt.md",
+    "joker": "joker.prompt.md",
+    "audience": "audience.prompt.md"
+  },
+  "stations": [
+    {
+      "name": "Joker",
+      "uiDescription": "tell the knock-knock beats",
+      "prompt": ["thread_common", "joker"],
+      "schemas": ["joker"],
+      "capability_mode": "all",
+      "max_visits": 3
+    },
+    {
+      "name": "Audience",
+      "uiDescription": "feed lines and laugh at the punchline",
+      "prompt": ["thread_common", "audience"],
+      "schemas": ["audience"],
+      "capability_mode": "all",
+      "max_visits": 3
+    }
+  ]
+}
