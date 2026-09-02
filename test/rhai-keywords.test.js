@@ -81,7 +81,7 @@ nodeTest.test("rejects reserved keyword as station name", function testBadStatio
         {
           name: "kw-demo",
           description: "keyword violation",
-          args: { station_dir: "stations" },
+          args: { station_dir: "stations", out_dir: "output" },
           prompts: { a: "a.prompt.md" },
           stations: [{ name: "switch", prompt: ["a"] }],
         },
@@ -107,6 +107,7 @@ nodeTest.test("reports multiple keyword violations", function testMulti() {
           description: "multiple keywords",
           args: {
             station_dir: "stations",
+            out_dir: "output",
             for: true, // reserved arg name
           },
           prompts: { a: "a.prompt.md" },
@@ -143,7 +144,7 @@ nodeTest.test("prompt text containing keywords is allowed", function testStringO
       {
         name: "kw-str",
         description: "keywords in prompt text only",
-        args: { station_dir: "stations" },
+        args: { station_dir: "stations", out_dir: "output" },
         prompts: { a: "a.prompt.md" },
         stations: [{ name: "Alpha", prompt: ["a"] }],
       },

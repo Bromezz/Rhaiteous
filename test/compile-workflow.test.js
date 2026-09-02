@@ -30,6 +30,8 @@ function assertForumRunnerIr(rhai) {
   nodeAssert.match(rhai, /fn build_input_section\(/);
   nodeAssert.match(rhai, /thread-create/);
   nodeAssert.match(rhai, /rhaiteous-toolbox/);
+  nodeAssert.match(rhai, /--threads-root/);
+  nodeAssert.match(rhai, /out_dir\/threads/);
   nodeAssert.match(rhai, /## Station Instructions/);
   nodeAssert.match(rhai, /## Input/);
   nodeAssert.match(rhai, /context_only/);
@@ -121,7 +123,7 @@ nodeTest.test("rejects payloadSchema", function testNoPayloadSchema() {
             name: "no-payload",
             description: "x",
             payloadSchema: "payload.schema.json",
-            args: { station_dir: "stations" },
+            args: { station_dir: "stations", out_dir: "output" },
             prompts: { a: "a.prompt.md" },
             schemas: { a: "a.schema.json" },
             stations: [{ name: "Alpha", prompt: ["a"] }],
@@ -144,7 +146,7 @@ nodeTest.test("rejects step scriptType and workflow.steps", function testRejectS
           name: "x",
           description: "d",
           scriptType: "step",
-          args: { station_dir: "s" },
+          args: { station_dir: "s", out_dir: "output" },
           stations: [{ name: "A", prompt: ["a"] }],
         },
         { base: shoppingPack }
@@ -159,7 +161,7 @@ nodeTest.test("rejects step scriptType and workflow.steps", function testRejectS
           name: "x",
           description: "d",
           steps: [],
-          args: { station_dir: "s" },
+          args: { station_dir: "s", out_dir: "output" },
           stations: [{ name: "A", prompt: ["a"] }],
         },
         { base: shoppingPack }
@@ -178,7 +180,7 @@ nodeTest.test("compiles minimal stations to forum-runner", function testMinimal(
       {
         name: "mini-thread",
         description: "minimal",
-        args: { station_dir: "stations" },
+        args: { station_dir: "stations", out_dir: "output" },
         prompts: { common: "common.prompt.md", a: "a.prompt.md", b: "b.prompt.md" },
         schemas: { a: "a.schema.json" },
         stations: [
@@ -203,7 +205,10 @@ nodeTest.test("unknown prompts binding fails closed", function testBadPromptBind
         {
           name: "bad-prompt",
           description: "d",
-          args: { station_dir: "workflows/example-office-shopping/stations" },
+          args: {
+            station_dir: "workflows/example-office-shopping/stations",
+            out_dir: "workflows/example-office-shopping/output",
+          },
           prompts: { only: "common.prompt.md" },
           schemas: {},
           stations: [{ name: "A", prompt: ["missing"] }],
@@ -225,7 +230,7 @@ nodeTest.test("rejects schema path with stations/ prefix", function testNoSchema
           {
             name: "bad-schema-path",
             description: "d",
-            args: { station_dir: "stations" },
+            args: { station_dir: "stations", out_dir: "output" },
             prompts: { a: "a.prompt.md" },
             schemas: { a: "stations/a.schema.json" },
             stations: [{ name: "A", prompt: ["a"] }],
@@ -265,6 +270,31 @@ nodeTest.test("requires args.station_dir at compile (pack contract)", function t
   }
 });
 
+nodeTest.test("requires args.out_dir at compile (pack contract)", function testRequireOutDir() {
+  const tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "tod-"));
+  writeMinimalPack(tmpDir);
+  try {
+    nodeAssert.throws(
+      function run() {
+        compileMod.compileWorkflow(
+          {
+            name: "no-out-dir",
+            description: "d",
+            args: { station_dir: "stations" },
+            prompts: { a: "a.prompt.md" },
+            schemas: { a: "a.schema.json" },
+            stations: [{ name: "A", prompt: ["a"] }],
+          },
+          { base: tmpDir, workflowPath: nodePath.join(tmpDir, "workflow.json") }
+        );
+      },
+      /out_dir/
+    );
+  } finally {
+    nodeFs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 nodeTest.test("does not emit pack args into IR", function testNoDefaultArgsEmit() {
   const workflow = compileMod.readJsonFile(issuesPath);
   const result = compileMod.compileWorkflow(workflow, {
@@ -286,7 +316,7 @@ nodeTest.test("rejects nested default under args", function testRejectNestedDefa
           {
             name: "bad-args",
             description: "d",
-            args: { station_dir: "stations", x: { default: 1 } },
+            args: { station_dir: "stations", out_dir: "output", x: { default: 1 } },
             prompts: { a: "a.prompt.md" },
             schemas: { a: "a.schema.json" },
             stations: [{ name: "A", prompt: ["a"] }],

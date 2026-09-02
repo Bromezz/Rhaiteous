@@ -592,7 +592,7 @@ function assertPackAssetsOnDisk(schemaCatalog, promptCatalog, stationsDir) {
 }
 
 /*
- * @description validate workflow.args: flat values + required station_dir
+ * @description validate workflow.args: flat values + required station_dir + out_dir
  * @param argsDef - workflow.args
  * @returns args object (possibly {})
  */
@@ -608,7 +608,7 @@ function validateWorkflowArgs(argsDef) {
 
   if (!argsDef || typeof argsDef !== "object" || Array.isArray(argsDef)) {
     throw new Error(
-      "workflow.args is required and must include station_dir (directory of *.schema.json / *.prompt.md)"
+      "workflow.args is required and must include station_dir and out_dir"
     );
   }
 
@@ -640,6 +640,12 @@ function validateWorkflowArgs(argsDef) {
   if (typeof out.station_dir !== "string" || out.station_dir.length === 0) {
     throw new Error(
       "workflow.args.station_dir is required (runtime directory containing *.schema.json and *.prompt.md)"
+    );
+  }
+
+  if (typeof out.out_dir !== "string" || out.out_dir.length === 0) {
+    throw new Error(
+      "workflow.args.out_dir is required (workflow context is stored under out_dir/threads/)"
     );
   }
 

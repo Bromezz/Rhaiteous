@@ -3,5 +3,5 @@
   "maxWindowChars": 800000,
   "charsPerTokenEstimate": 4,
   "maxEstimatedTokens": 200000,
-  "note": "threadsRoot is resolved from process.cwd() unless absolute. Tooling increments station_run on counted append/replace; --no-count / mode=capped suppresses increment and sets benched."
+  "note": "Product forum-runner always passes --threads-root <out_dir>/threads. Bare CLI without that flag: threadsRoot is relative to the process starting directory unless absolute, or override with RHAITEOUS_THREADS_ROOT. Tooling increments station_run on counted append/replace; --no-count / mode=capped suppresses increment and sets benched."
 }

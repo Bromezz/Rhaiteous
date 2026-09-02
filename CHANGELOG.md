@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `tools/toolbox/` — `rhaiteous-toolbox.mjs`, `thread-create`, `thread-get-posts`, `thread-add-post`, shared `lib.mjs` + config (`RHAITEOUS_THREADS_ROOT` override)
+- `tools/toolbox/` — `rhaiteous-toolbox.mjs`, `thread-create`, `thread-get-posts`, `thread-add-post`, shared `lib.mjs` + config
+- Workflow context files always under **`out_dir/threads/`** (forum-runner passes `--threads-root <out_dir>/threads`; `args.out_dir` required at compile)
 - Optional pack `finalize.mjs` (not invoked by the skinny runner) and optional `tools/write-thread.mjs` export helper
 - **`example-knock-knock`** seed pack — Joker ⇄ Audience classic knock-knock (max_visits 3 each, append only)
 

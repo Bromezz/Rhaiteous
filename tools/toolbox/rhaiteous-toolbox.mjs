@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * Dispatcher: node rhaiteous-toolbox.mjs <tool> [args...]
+ * Dispatcher: node rhaiteous-toolbox.mjs [--threads-root <dir>] <tool> [args...]
  * Peers always resolve next to this file.
+ *
+ * Product runs pass --threads-root <out_dir>/threads so workflow context
+ * lives under the workflow's out_dir (never a bare cwd/threads default).
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -18,17 +21,41 @@ const TOOLS = {
 
 function usage() {
   process.stderr.write(
-    `usage: node rhaiteous-toolbox.mjs <tool> [args...]\n` +
-      `  tools: ${Object.keys(TOOLS).join(" | ")}\n`
+    `usage: node rhaiteous-toolbox.mjs [--threads-root <dir>] <tool> [args...]\n` +
+      `  tools: ${Object.keys(TOOLS).join(" | ")}\n` +
+      `  --threads-root  directory for thread.json storage (product: <out_dir>/threads)\n`
   );
   process.exit(2);
 }
 
-const argv = process.argv.slice(2);
-if (argv.length < 1 || argv[0] === "-h" || argv[0] === "--help") usage();
+function parseArgv(argv) {
+  let threadsRoot = "";
+  const out = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "-h" || a === "--help") usage();
+    if (a === "--threads-root") {
+      if (!argv[i + 1] || String(argv[i + 1]).startsWith("-")) {
+        process.stderr.write("--threads-root requires a directory path\n");
+        usage();
+      }
+      threadsRoot = path.resolve(argv[++i]);
+      continue;
+    }
+    if (a.startsWith("--threads-root=")) {
+      threadsRoot = path.resolve(a.slice("--threads-root=".length));
+      continue;
+    }
+    out.push(a);
+  }
+  return { threadsRoot, args: out };
+}
 
-const tool = argv[0];
-const rest = argv.slice(1);
+const { threadsRoot, args } = parseArgv(process.argv.slice(2));
+if (args.length < 1) usage();
+
+const tool = args[0];
+const rest = args.slice(1);
 const scriptName = TOOLS[tool];
 if (!scriptName) {
   process.stderr.write(`unknown tool: ${tool}\n`);
@@ -41,9 +68,15 @@ if (!fs.existsSync(scriptPath)) {
   process.exit(1);
 }
 
+const env = { ...process.env };
+if (threadsRoot) {
+  env.RHAITEOUS_THREADS_ROOT = threadsRoot;
+}
+
 const result = spawnSync(process.execPath, [scriptPath, ...rest], {
   stdio: "inherit",
   windowsHide: true,
+  env,
 });
 
 if (result.error) {

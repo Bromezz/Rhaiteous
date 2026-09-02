@@ -9,8 +9,8 @@ You author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not sup
 
 | Piece | Role |
 |--------|------|
-| **workflow context** | Durable JSON on disk under `threads/<id>/thread.json`: `stations`, `caps`, `station_run`, `benched`, `schemas`, `posts` |
-| **toolbox** | `tools/toolbox/rhaiteous-toolbox.mjs` — `thread-create`, `thread-get-posts`, `thread-add-post` (station agents shell these) |
+| **workflow context** | Durable JSON on disk under **`out_dir/threads/<id>/thread.json`**: `stations`, `caps`, `station_run`, `benched`, `schemas`, `posts` |
+| **toolbox** | `tools/toolbox/rhaiteous-toolbox.mjs` — `thread-create`, `thread-get-posts`, `thread-add-post` (station agents shell these with `--threads-root <out_dir>/threads`) |
 | **Station prompt** | Orchestrator concatenates **Operational Guidance** (common) + **Input** + **Station Instructions** |
 | **Station output** | Exactly **one post**: `metadata` + `message` (identical to what `thread-add-post` saved) |
 | **Driver** | Init → `while next_name` → `phase` → `agent` → follow single `metadata.to` until terminal |
@@ -128,6 +128,9 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`**. See [using-in-a-grok-
 | `payloadSchema` | — | no | **Rejected** (removed with the old flow envelope) |
 | `stations` | array | yes | Non-empty ordered station objects |
 | `finalizer` | string | no | Optional pack script name (not invoked by the skinny runner) |
+
+`args.station_dir` and **`args.out_dir`** are required. Workflow context is always stored under `out_dir/threads/`.
+
 | `steps` | — | no | **Rejected** (removed) |
 | `phases` | — | no | **Rejected** — derived from `stations` |
 

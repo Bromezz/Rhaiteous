@@ -94,3 +94,32 @@ nodeTest.test("toolbox create → add append → get posts", function testRoundT
 
   nodeFs.rmSync(tmp, { recursive: true, force: true });
 });
+
+nodeTest.test("toolbox --threads-root stores under out_dir/threads", function testOutDirThreads() {
+  const tmp = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "rh-tb-out-"));
+  const outDir = nodePath.join(tmp, "output");
+  const threadsRoot = nodePath.join(outDir, "threads");
+  const alienCwd = nodePath.join(tmp, "alien-cwd");
+  nodeFs.mkdirSync(alienCwd, { recursive: true });
+
+  const env = { ...process.env };
+  delete env.RHAITEOUS_THREADS_ROOT;
+
+  const create = runTool(["--threads-root", threadsRoot, "thread-create"], {
+    input: JSON.stringify({
+      stations: ["A"],
+      caps: { A: 1 },
+      schemas: {},
+    }),
+    cwd: alienCwd,
+    env,
+  });
+  nodeAssert.equal(create.status, 0, create.stderr || create.stdout);
+  const created = JSON.parse(create.stdout);
+  nodeAssert.ok(String(created.path).startsWith(threadsRoot));
+  nodeAssert.equal(nodeFs.existsSync(created.path), true);
+  nodeAssert.equal(nodeFs.existsSync(nodePath.join(alienCwd, "threads")), false);
+  nodeAssert.equal(nodeFs.existsSync(nodePath.join(repoRoot, "threads", created.id)), false);
+
+  nodeFs.rmSync(tmp, { recursive: true, force: true });
+});

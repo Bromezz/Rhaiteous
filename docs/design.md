@@ -28,7 +28,7 @@ Rhaiteous is **station-flow only**: author `stations[]` in JSON; the compiler em
 
 1. **Init** creates a durable **workflow context** via the Rhaiteous toolbox (`thread-create`) and loads Operational Guidance + station prompt texts into the orchestrator.
 2. Each station `agent()` receives **Operational Guidance + Input + Station Instructions** (concatenated by the orchestrator — stations do not `read_file` those prompts themselves).
-3. Station agents **persist** with the toolbox (`thread-get-posts` / `thread-add-post`) and return **exactly one post**; the Rhai driver **routes** on `metadata.to`.
+3. Station agents **persist** with the toolbox (`thread-get-posts` / `thread-add-post`) under **`out_dir/threads/`** and return **exactly one post**; the Rhai driver **routes** on `metadata.to`.
 
 Linear `steps[]` / `scriptType: "step"` and **`payloadSchema` / `flow.payload`** were removed. Multi-agent pipelines are stations with agent-owned persistence and routing.
 

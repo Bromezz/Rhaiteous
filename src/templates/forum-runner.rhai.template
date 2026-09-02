@@ -6,13 +6,12 @@
 //
 // Prompt per station = Operational Guidance (common) + Input + Station Instructions
 // (concatenated here; station agents do not read_file those prompts themselves).
-// Persistence via Rhaiteous toolbox (workflow context). Catalogs load at Init.
+// Persistence via Rhaiteous toolbox under <out_dir>/threads/.
 
 @@META@@
 
 let default_workflow_json = @@WORKFLOW_JSON@@;
 let toolbox_script = @@TOOLBOX_SCRIPT@@;
-let toolbox = "node " + toolbox_script;
 
 if args == () {
     pause("verification", "Pass args: at least station_dir (and workflow path if not using compile-time default).");
@@ -28,9 +27,19 @@ if workflow_path == () || workflow_path == "" {
 
 let context_only = args.context_only == true;
 
+// Optional launch override; Init fills from workflow.args.out_dir when omitted.
+let out_dir = args.out_dir;
+if out_dir == () {
+    out_dir = "";
+}
+
+fn toolbox_cmd(script, out_directory) {
+    "node " + script + " --threads-root " + out_directory + "/threads"
+}
+
 let init_schema = #{
     "type": "object",
-    "required": ["ok", "context_id", "stations", "prompts"],
+    "required": ["ok", "context_id", "stations", "prompts", "out_dir"],
     "properties": #{
         "ok": #{ "type": "boolean" },
         "context_id": #{ "type": "string" },
@@ -39,6 +48,7 @@ let init_schema = #{
         "stations": #{ "type": "array", "items": #{ "type": "string" } },
         "caps": #{ "type": "object" },
         "station_dir": #{ "type": "string" },
+        "out_dir": #{ "type": "string" },
         "prompts": #{ "type": "object" },
         "prompt_keys": #{ "type": "array", "items": #{ "type": "string" } },
     },
@@ -81,22 +91,23 @@ fn normalize_to(raw) {
     raw
 }
 
-fn build_input_section(station_name, context_id, toolbox_cmd, wf_path) {
+fn build_input_section(station_name, context_id, toolbox_prefix, wf_path, out_directory) {
     let s = "";
     s += "## Input\n\n";
     s += "The **input** for your performance consists of the following:\n\n";
     s += "- this station's name: `" + station_name + "`\n";
     s += "- workflow-context id: `" + context_id + "`\n";
-    s += "- Rhaiteous toolbox invocation prefix: `" + toolbox_cmd + "`\n";
+    s += "- Rhaiteous toolbox invocation prefix: `" + toolbox_prefix + "`\n";
     s += "- workflow definition path: `" + wf_path + "` (read when station instructions require run settings / args)\n";
+    s += "- out_dir: `" + out_directory + "` (workflow context files are under `" + out_directory + "/threads/`)\n";
     s
 }
 
-fn build_station_prompt(guidance, station_name, station_instructions, context_id, toolbox_cmd, wf_path) {
+fn build_station_prompt(guidance, station_name, station_instructions, context_id, toolbox_prefix, wf_path, out_directory) {
     let s = "";
     s += guidance;
     s += "\n\n";
-    s += build_input_section(station_name, context_id, toolbox_cmd, wf_path);
+    s += build_input_section(station_name, context_id, toolbox_prefix, wf_path, out_directory);
     s += "\n";
     s += "## Station Instructions\n\n";
     s += station_instructions;
@@ -111,18 +122,20 @@ init_prompt += "Setup only — you are not a workflow station.\n\n";
 init_prompt += "1) read_file exactly: " + workflow_path + "\n";
 init_prompt += "   Parse stations[].name and max_visits (default 1) → stations[], caps{}.\n";
 init_prompt += "   Resolve station_dir: launch args.station_dir if set, else workflow.args.station_dir.\n";
+init_prompt += "   Resolve out_dir: launch args.out_dir if set, else workflow.args.out_dir. Required — fail if missing/empty.\n";
 init_prompt += "   Parse schemas map; read each schema file under station_dir; build schemas{} objects.\n";
 init_prompt += "   Parse prompts map (binding → filename under station_dir).\n";
-init_prompt += "2) Create workflow context (do not write thread.json by hand):\n";
+init_prompt += "2) Create workflow context under out_dir/threads (do not write thread.json by hand):\n";
 init_prompt += "   Pipe {\"stations\":[...],\"caps\":{...},\"schemas\":{...}} to:\n";
-init_prompt += "   " + toolbox + " thread-create\n";
+init_prompt += "   node " + toolbox_script + " --threads-root <out_dir>/threads thread-create\n";
+init_prompt += "   (replace <out_dir> with the resolved out_dir; create parent dirs as needed via the tool).\n";
 init_prompt += "   Parse stdout for id → context_id and path.\n";
 init_prompt += "3) read_file prompt files as UTF-8 text:\n";
 init_prompt += "   - prompts.common = body of the common / thread_common prompt file\n";
 init_prompt += "   - For each station name S, prompts[S] = body of that station's prompt file\n";
 init_prompt += "     (resolve via workflow.prompts + stations[].prompt bindings; prefer the last non-common binding).\n";
 init_prompt += "4) If args.context_only would apply, still return prompts and stations (orchestrator may short-circuit).\n";
-init_prompt += "5) Return ok=true, context_id, path, stations, caps, station_dir, prompts{ common, <StationName>: ... }, prompt_keys.\n";
+init_prompt += "5) Return ok=true, context_id, path, stations, caps, station_dir, out_dir, prompts{ common, <StationName>: ... }, prompt_keys.\n";
 init_prompt += "   On failure ok=false and error.\n";
 
 let init_r = agent(init_prompt, #{
@@ -143,6 +156,7 @@ let context_id = init_r.output.context_id;
 let stations = init_r.output.stations;
 let prompts = init_r.output.prompts;
 let station_dir = init_r.output.station_dir;
+out_dir = init_r.output.out_dir;
 
 if stations == () || type_of(stations) != "array" || stations.len() == 0 {
     pause("infra", "Init returned no stations");
@@ -150,6 +164,11 @@ if stations == () || type_of(stations) != "array" || stations.len() == 0 {
 if prompts == () || prompts.common == () || prompts.common == "" {
     pause("infra", "Init returned empty prompts.common (Operational Guidance)");
 }
+if out_dir == () || out_dir == "" {
+    pause("infra", "Init returned empty out_dir (workflow context must live under out_dir/threads)");
+}
+
+let toolbox = toolbox_cmd(toolbox_script, out_dir);
 
 if context_only {
     complete(#{
@@ -158,6 +177,7 @@ if context_only {
         stations: stations,
         caps: init_r.output.caps,
         station_dir: station_dir,
+        out_dir: out_dir,
         workflow_path: workflow_path,
         prompt_keys: init_r.output.prompt_keys,
     });
@@ -193,7 +213,8 @@ while next_name != () {
         station_instructions,
         context_id,
         toolbox,
-        workflow_path
+        workflow_path,
+        out_dir
     );
 
     let sr = agent(prompt, #{
@@ -222,4 +243,5 @@ complete(#{
     last_post: last_post,
     workflow_path: workflow_path,
     station_dir: station_dir,
+    out_dir: out_dir,
 });
