@@ -1,6 +1,6 @@
 {
   "name": "rhaiteous",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": false,
   "description": "Rhaiteous — compile JSON station workflows (workflow-context + toolbox) + JSON Schema into Grok Build Rhai scripts",
   "license": "MIT",
