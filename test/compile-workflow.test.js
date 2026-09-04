@@ -38,6 +38,11 @@ function assertForumRunnerIr(rhai) {
   nodeAssert.match(rhai, /context_id/);
   nodeAssert.match(rhai, /while next_name/);
   nodeAssert.match(rhai, /phase\("Init"\)/);
+  nodeAssert.match(rhai, /phase\("Finalize"\)/);
+  nodeAssert.match(rhai, /finalizer/);
+  nodeAssert.match(rhai, /finalize:pack-script/);
+  nodeAssert.match(rhai, /fn resolve_next\(/);
+  nodeAssert.match(rhai, /default_routes/);
   // catalogs / station_defs / default_args must NOT be stamped
   nodeAssert.doesNotMatch(rhai, /let default_args =/);
   nodeAssert.doesNotMatch(rhai, /let schema_catalog =/);
@@ -82,6 +87,61 @@ nodeTest.test("compiles example-office-shopping as forum-runner", function testS
   nodeAssert.match(result.workflowMd, /# example-office-shopping/);
   nodeAssert.match(result.workflowMd, /\/workflow example-office-shopping/);
   nodeAssert.equal(workflow.payloadSchema, undefined);
+  nodeAssert.equal(workflow.stations[0].default_route, "Inventory");
+  nodeAssert.equal(workflow.stations[3].default_route, "Purchasing");
+  nodeAssert.equal(workflow.stations[4].default_route, undefined);
+});
+
+nodeTest.test("rejects unknown or self default_route", function testBadDefaultRoute() {
+  const tmpDir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "tdr-"));
+  writeMinimalPack(tmpDir);
+  try {
+    nodeAssert.throws(function unknown() {
+      compileMod.compileWorkflow(
+        {
+          name: "bad-route",
+          description: "x",
+          args: { station_dir: "stations", out_dir: "output" },
+          prompts: { common: "common.prompt.md", a: "a.prompt.md", b: "b.prompt.md" },
+          schemas: { a: "a.schema.json" },
+          stations: [
+            {
+              name: "Alpha",
+              prompt: ["common", "a"],
+              schemas: ["a"],
+              default_route: "Nope",
+            },
+            { name: "Beta", prompt: ["common", "b"] },
+          ],
+        },
+        { base: tmpDir }
+      );
+    }, /default_route.*"Nope"/);
+
+    nodeAssert.throws(function selfRoute() {
+      compileMod.compileWorkflow(
+        {
+          name: "self-route",
+          description: "x",
+          args: { station_dir: "stations", out_dir: "output" },
+          prompts: { common: "common.prompt.md", a: "a.prompt.md", b: "b.prompt.md" },
+          schemas: { a: "a.schema.json" },
+          stations: [
+            {
+              name: "Alpha",
+              prompt: ["common", "a"],
+              schemas: ["a"],
+              default_route: "Alpha",
+            },
+            { name: "Beta", prompt: ["common", "b"] },
+          ],
+        },
+        { base: tmpDir }
+      );
+    }, /must not refer to the same station/);
+  } finally {
+    nodeFs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 nodeTest.test("compiles example-birthday-issues as forum-runner", function testIssues() {

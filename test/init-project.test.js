@@ -127,6 +127,15 @@ nodeTest.test("CLI init + compile pack end-to-end", function testCli() {
         nodePath.join(host, ".grok", "workflows", "example-office-shopping.rhai")
       )
     );
+
+    // friendly confirmation must name the workflow and every artifact path
+    const err = r.stderr || "";
+    nodeAssert.match(err, /compile succeeded for workflow "example-office-shopping"/);
+    nodeAssert.match(err, /source\s+.*example-office-shopping[/\\]workflow\.json/);
+    nodeAssert.match(err, /wrote\s+.*example-office-shopping[/\\]workflow\.rhai/);
+    nodeAssert.match(err, /wrote\s+.*example-office-shopping[/\\]workflow\.md/);
+    nodeAssert.match(err, /wrote\s+.*\.grok[/\\]workflows[/\\]example-office-shopping\.rhai/);
+    nodeAssert.match(err, /\/workflow example-office-shopping \{\}/);
   } finally {
     rmrf(host);
   }

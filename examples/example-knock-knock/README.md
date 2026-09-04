@@ -16,3 +16,13 @@ Minimal **Joker ⇄ Audience** dialogue that exercises the workflow-context tool
 Both stations have **`max_visits: 3`**. Saves are **`--treatment append` only** (no replace). If Joker caps before the punchline, Audience ends with `This isn't funny.`
 
 Common prompt is **Operational Guidance**; the orchestrator concatenates Guidance + Input + Station Instructions.
+
+## Finalizer
+
+`workflow.json` sets `"finalizer": "finalize.mjs"`. After the last station, the runner runs:
+
+```text
+node finalize.mjs <absolute-path-to-thread.json>
+```
+
+That script loads **`custom-finalize.mjs`**, which writes `output/finalize-summary.md` (a short transcript of the joke posts). Omit or clear `finalizer` to skip post-processing.

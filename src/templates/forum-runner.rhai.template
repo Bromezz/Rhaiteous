@@ -39,7 +39,7 @@ fn toolbox_cmd(script, out_directory) {
 
 let init_schema = #{
     "type": "object",
-    "required": ["ok", "context_id", "stations", "prompts", "out_dir"],
+    "required": ["ok", "context_id", "stations", "prompts", "out_dir", "path"],
     "properties": #{
         "ok": #{ "type": "boolean" },
         "context_id": #{ "type": "string" },
@@ -51,6 +51,22 @@ let init_schema = #{
         "out_dir": #{ "type": "string" },
         "prompts": #{ "type": "object" },
         "prompt_keys": #{ "type": "array", "items": #{ "type": "string" } },
+        "finalizer": #{ "type": "string" },
+        "pack_dir": #{ "type": "string" },
+        "default_routes": #{ "type": "object" },
+    },
+};
+
+let finalize_schema = #{
+    "type": "object",
+    "required": ["ok"],
+    "properties": #{
+        "ok": #{ "type": "boolean" },
+        "exit_code": #{ "type": "integer" },
+        "stdout": #{ "type": "string" },
+        "stderr": #{ "type": "string" },
+        "error": #{ "type": "string" },
+        "skipped": #{ "type": "boolean" },
     },
 };
 
@@ -91,6 +107,25 @@ fn normalize_to(raw) {
     raw
 }
 
+// Explicit terminal: empty array or empty string (not omitted / ())
+fn is_explicit_terminal(raw) {
+    if raw == () { return false; }
+    if type_of(raw) == "array" && raw.len() == 0 { return true; }
+    if type_of(raw) == "string" && raw == "" { return true; }
+    false
+}
+
+// Use metadata.to when set; []/"" end the run; omitted → stations[].default_route
+fn resolve_next(raw_to, from_name, default_routes) {
+    let n = normalize_to(raw_to);
+    if n != () { return n; }
+    if is_explicit_terminal(raw_to) { return (); }
+    if default_routes == () || from_name == () || from_name == "" { return (); }
+    let d = default_routes[from_name];
+    if d == () || d == "" { return (); }
+    d
+}
+
 fn build_input_section(station_name, context_id, toolbox_prefix, wf_path, out_directory) {
     let s = "";
     s += "## Input\n\n";
@@ -121,21 +156,23 @@ let init_prompt = "";
 init_prompt += "Setup only — you are not a workflow station.\n\n";
 init_prompt += "1) read_file exactly: " + workflow_path + "\n";
 init_prompt += "   Parse stations[].name and max_visits (default 1) → stations[], caps{}.\n";
+init_prompt += "   Build default_routes{}: for each station with a non-empty string default_route, map station name → that route (must be another station name).\n";
 init_prompt += "   Resolve station_dir: launch args.station_dir if set, else workflow.args.station_dir.\n";
 init_prompt += "   Resolve out_dir: launch args.out_dir if set, else workflow.args.out_dir. Required — fail if missing/empty.\n";
 init_prompt += "   Parse schemas map; read each schema file under station_dir; build schemas{} objects.\n";
 init_prompt += "   Parse prompts map (binding → filename under station_dir).\n";
+init_prompt += "   Optional top-level finalizer: if workflow.finalizer is a non-empty string, resolve it relative to the directory containing workflow.json (pack_dir). If that file does not exist, treat as unset. If missing, empty, null, or false → finalizer=\"\".\n";
 init_prompt += "2) Create workflow context under out_dir/threads (do not write thread.json by hand):\n";
 init_prompt += "   Pipe {\"stations\":[...],\"caps\":{...},\"schemas\":{...}} to:\n";
 init_prompt += "   node " + toolbox_script + " --threads-root <out_dir>/threads thread-create\n";
 init_prompt += "   (replace <out_dir> with the resolved out_dir; create parent dirs as needed via the tool).\n";
-init_prompt += "   Parse stdout for id → context_id and path.\n";
+init_prompt += "   Parse stdout for id → context_id and path (path = thread.json for this run).\n";
 init_prompt += "3) read_file prompt files as UTF-8 text:\n";
 init_prompt += "   - prompts.common = body of the common / thread_common prompt file\n";
 init_prompt += "   - For each station name S, prompts[S] = body of that station's prompt file\n";
 init_prompt += "     (resolve via workflow.prompts + stations[].prompt bindings; prefer the last non-common binding).\n";
 init_prompt += "4) If args.context_only would apply, still return prompts and stations (orchestrator may short-circuit).\n";
-init_prompt += "5) Return ok=true, context_id, path, stations, caps, station_dir, out_dir, prompts{ common, <StationName>: ... }, prompt_keys.\n";
+init_prompt += "5) Return ok=true, context_id, path (thread.json), pack_dir, finalizer (resolved script path or \"\"), default_routes{}, stations, caps, station_dir, out_dir, prompts{ common, <StationName>: ... }, prompt_keys.\n";
 init_prompt += "   On failure ok=false and error.\n";
 
 let init_r = agent(init_prompt, #{
@@ -156,6 +193,10 @@ let context_id = init_r.output.context_id;
 let stations = init_r.output.stations;
 let prompts = init_r.output.prompts;
 let station_dir = init_r.output.station_dir;
+let default_routes = init_r.output.default_routes;
+if default_routes == () {
+    default_routes = #{};
+}
 out_dir = init_r.output.out_dir;
 
 if stations == () || type_of(stations) != "array" || stations.len() == 0 {
@@ -234,7 +275,62 @@ while next_name != () {
     }
 
     last_post = sr.output;
-    next_name = normalize_to(last_post.metadata["to"]);
+    let raw_to = last_post.metadata["to"];
+    let from_name = last_post.metadata["from"];
+    if from_name == () || from_name == "" {
+        from_name = station_name;
+    }
+    next_name = resolve_next(raw_to, from_name, default_routes);
+}
+
+// Optional pack finalizer (workflow.finalizer → node <script> <thread.json>)
+let finalizer = init_r.output.finalizer;
+if finalizer == () {
+    finalizer = "";
+}
+let thread_path = init_r.output.path;
+let finalize_skipped = true;
+let finalize_ok = true;
+let finalize_detail = ();
+
+if finalizer != "" && thread_path != () && thread_path != "" {
+    phase("Finalize");
+    finalize_skipped = false;
+    let fin_prompt = "";
+    fin_prompt += "You are not a workflow station. Run the pack finalizer exactly once.\n\n";
+    fin_prompt += "Execute this shell command (quote paths if they contain spaces):\n\n";
+    fin_prompt += "node " + finalizer + " " + thread_path + "\n\n";
+    fin_prompt += "Do not invent another command. Capture exit code, stdout, and stderr.\n";
+    fin_prompt += "Return ok=true only if exit code is 0; otherwise ok=false with error summarizing stderr/stdout.\n";
+
+    let fr = agent(fin_prompt, #{
+        label: "finalize:pack-script",
+        capability_mode: "all",
+        output_schema: finalize_schema,
+    });
+
+    if fr == () || !fr.success || fr.output == () || fr.output.ok != true {
+        finalize_ok = false;
+        let msg = "Finalize failed";
+        if fr != () && fr.output != () && fr.output.error != () {
+            msg = fr.output.error;
+        }
+        complete(#{
+            ok: false,
+            step: "finalize",
+            error: msg,
+            context_id: context_id,
+            last_post: last_post,
+            workflow_path: workflow_path,
+            station_dir: station_dir,
+            out_dir: out_dir,
+            finalizer: finalizer,
+            thread_path: thread_path,
+            finalize: fr,
+        });
+    }
+
+    finalize_detail = fr.output;
 }
 
 complete(#{
@@ -244,4 +340,8 @@ complete(#{
     workflow_path: workflow_path,
     station_dir: station_dir,
     out_dir: out_dir,
+    finalizer: finalizer,
+    thread_path: thread_path,
+    finalize_skipped: finalize_skipped,
+    finalize: finalize_detail,
 });

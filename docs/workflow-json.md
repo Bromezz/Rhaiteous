@@ -13,7 +13,7 @@ You author **`stations[]`**. Linear `steps[]` / `scriptType: "step"` are not sup
 | **toolbox** | `tools/toolbox/rhaiteous-toolbox.mjs` — `thread-create`, `thread-get-posts`, `thread-add-post` (station agents shell these with `--threads-root <out_dir>/threads`) |
 | **Station prompt** | Orchestrator concatenates **Operational Guidance** (common) + **Input** + **Station Instructions** |
 | **Station output** | Exactly **one post**: `metadata` + `message` (identical to what `thread-add-post` saved) |
-| **Driver** | Init → `while next_name` → `phase` → `agent` → follow single `metadata.to` until terminal |
+| **Driver** | Init → `while next_name` → `phase` → `agent` → resolve next from `metadata.to` or `stations[].default_route` → optional **Finalize** |
 
 Default **`max_visits` = 1** per station unless `stations[].max_visits` is set. Multi-recipient `to` is unsupported (first recipient only).
 
@@ -127,7 +127,7 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`**. See [using-in-a-grok-
 | `prompts` | object | no | Binding → path under `{base}/prompts/`; station `prompt` lists binding names |
 | `payloadSchema` | — | no | **Rejected** (removed with the old flow envelope) |
 | `stations` | array | yes | Non-empty ordered station objects |
-| `finalizer` | string | no | Optional pack script name (not invoked by the skinny runner) |
+| `finalizer` | string \| false | no | Optional script path **relative to the pack directory** (e.g. `"finalize.mjs"`). After the last station, the runner executes `node <resolved-script> <absolute-thread.json>`. Omit, `""`, or `false` to skip. Missing file → skip (same as unset). Non-zero exit fails the workflow. |
 
 `args.station_dir` and **`args.out_dir`** are required. Workflow context is always stored under `out_dir/threads/`.
 
@@ -146,19 +146,27 @@ Compiled IR defaults to **`.grok/workflows/<name>.rhai`**. See [using-in-a-grok-
 | `capability_mode` | string | no | Authoring hint; skinny runner uses `all` so stations can shell the toolbox |
 | `agent_type` | string | no | Optional Grok agent type |
 | `max_visits` | integer | no | Counted performances allowed (≥ 1; default **1**) |
+| `default_route` | string | no | Another **station name**. Used only when the returned post **omits** `metadata.to`. Explicit `to: []` or `""` still ends the run. Must not equal this station’s `name`. **Not** inferred from `stations[]` order. |
 
-Compiler emits a skinny forum-runner: `meta` (Init + station phases), stamped `workflow.json` path + toolbox script path, Init agent (create context + load prompts), then a `while next_name` station loop. Station agents return one post; the driver follows `metadata.to`.
+Compiler emits a skinny forum-runner: `meta` (Init + station phases + Finalize), stamped `workflow.json` path + toolbox script path, Init agent (create context + load prompts + `default_routes` + `finalizer`), then a `while next_name` station loop, then optional Finalize.
 
 ```rhai
-// Init: thread-create + load prompts.common / prompts[<Station>]
+// Init: thread-create + prompts + default_routes + finalizer
 let next_name = stations[0];
 while next_name != () {
-    // agent(Operational Guidance + Input + Station Instructions) → post
-    next_name = normalize_to(last_post.metadata["to"]);
+    // agent(…) → post
+    next_name = resolve_next(metadata.to, metadata.from, default_routes);
 }
+// Optional: node <finalizer> <thread.json>
 ```
 
-Routing (`metadata.to`) is **agent-owned** via Operational Guidance + station instructions. Agents persist with the toolbox before returning the post.
+| Returned `metadata.to` | Next station |
+|--------------------------|--------------|
+| Station name (or non-empty array → first) | That name |
+| `[]` or `""` | End run (explicit terminal) |
+| Omitted / missing | `stations[].default_route` for `metadata.from`, if set; else end run |
+
+Agents still set `to` for branches, rework, and terminal ends. Persist with the toolbox before returning the post.
 
 ### Top-level `prompts`
 

@@ -31,7 +31,8 @@
       "prompt": ["thread_common", "intake"],
       "schemas": ["intake"],
       "capability_mode": "all",
-      "max_visits": 1
+      "max_visits": 1,
+      "default_route": "Inventory"
     },
     {
       "name": "Inventory",
@@ -39,7 +40,8 @@
       "prompt": ["thread_common", "inventory"],
       "schemas": ["inventory"],
       "capability_mode": "all",
-      "max_visits": 1
+      "max_visits": 1,
+      "default_route": "Audit"
     },
     {
       "name": "Audit",
@@ -47,7 +49,8 @@
       "prompt": ["thread_common", "audit"],
       "schemas": ["audit"],
       "capability_mode": "all",
-      "max_visits": 1
+      "max_visits": 1,
+      "default_route": "Procurement"
     },
     {
       "name": "Procurement",
@@ -55,7 +58,8 @@
       "prompt": ["thread_common", "procurement"],
       "schemas": ["procurement"],
       "capability_mode": "all",
-      "max_visits": 1
+      "max_visits": 1,
+      "default_route": "Purchasing"
     },
     {
       "name": "Purchasing",

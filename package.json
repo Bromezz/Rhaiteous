@@ -1,6 +1,6 @@
 {
   "name": "rhaiteous",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "description": "Rhaiteous — compile JSON station workflows (workflow-context + toolbox) + JSON Schema into Grok Build Rhai scripts",
   "license": "MIT",
@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "rhaiteous": "node ./bin/rhaiteous.js",
-    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js ./test/rhai-keywords.test.js ./test/schema-inline.test.js ./test/init-project.test.js ./test/toolbox.test.js",
+    "test": "node --test ./test/json-to-rhai.test.js ./test/compile-workflow.test.js ./test/rhai-keywords.test.js ./test/schema-inline.test.js ./test/init-project.test.js ./test/toolbox.test.js ./test/clone-pack.test.js ./test/finalize-custom.test.js",
     "prepack": "node ./packaging/map-examples-to-workflows.mjs",
     "postpack": "node ./packaging/clean-workflows-map.mjs",
     "map:workflows": "node ./packaging/map-examples-to-workflows.mjs",

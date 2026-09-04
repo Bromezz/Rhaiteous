@@ -23,12 +23,28 @@ Registry: [https://www.npmjs.com/package/rhaiteous](https://www.npmjs.com/packag
 ### Synopsis
 
 ```text
-rhaiteous <workflow.json> [options]
-# or:
+npx rhaiteous init [options]
+npx rhaiteous compile <pack-name> [options]
+npx rhaiteous clonepack --source <pack> --destination <pack>
+npx rhaiteous clonepack <source> <destination>
 npx rhaiteous <workflow.json> [options]
 ```
 
-### Options
+### `clonepack`
+
+Copy `./workflows/<source>/` to `./workflows/<destination>/` for authoring a new pack from an existing one.
+
+| | |
+|--|--|
+| **Copies** | `stations/**`, sample `input/**`, `workflow.json` (rewritten), `finalize.mjs` / pack `README.md` when present |
+| **Omits** | `output/**` contents, `workflow.rhai`, `workflow.md` |
+| **Recreates** | empty `output/` with `.gitkeep` |
+| **Rewrites** | `workflow.json` `name`, `args.station_dir`, `args.out_dir`, and other `args` strings that embed `workflows/<source>/` |
+| **Fails when** | destination already exists (no `--force` yet), source missing, or invalid pack ids |
+
+Options: `--source`, `--destination`, `--dir <host-root>`, `-h` / `--help`.
+
+### Compile options
 
 | Option | Description |
 |--------|-------------|
@@ -36,7 +52,7 @@ npx rhaiteous <workflow.json> [options]
 | `-b`, `--base <path>` | Asset base directory containing `schemas/` and `prompts/` (default: `rhaiteous` under cwd). Workflow JSON is usually under `{base}/workflows/`. |
 | `--stdout` | Print Rhai to **stdout**; do not write a file |
 | `--dry-run` | Compile only; do not write |
-| `-h`, `--help` | Print help to stderr |
+| `-h`, `--help` | Verify the CLI is available; print a pointer to the web README on stderr (no full command reference) |
 
 ### Asset base
 

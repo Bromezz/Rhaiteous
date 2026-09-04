@@ -1290,6 +1290,16 @@ function normalizeStations(stations) {
       entry.max_visits = raw.max_visits;
     }
 
+    //optional default_route (applied when metadata.to is omitted — not when [])
+    if (raw.default_route !== undefined && raw.default_route !== null) {
+      if (typeof raw.default_route !== "string" || raw.default_route.length === 0) {
+        throw new Error(
+          "stations[" + i + "].default_route must be a non-empty string station name"
+        );
+      }
+      entry.default_route = raw.default_route;
+    }
+
     //optional schema binding names (attachment schema keys for this station)
     if (raw.schemas !== undefined) {
 
@@ -1317,6 +1327,32 @@ function normalizeStations(stations) {
     i += 1;
 
   //end station walk
+  }
+
+  //validate default_route targets (after all names are known)
+  i = 0;
+  while (i < out.length) {
+    if (typeof out[i].default_route === "string") {
+      if (!seen[out[i].default_route]) {
+        throw new Error(
+          "stations[" +
+            i +
+            "].default_route \"" +
+            out[i].default_route +
+            "\" does not match any stations[].name"
+        );
+      }
+      if (out[i].default_route === out[i].name) {
+        throw new Error(
+          "stations[" +
+            i +
+            "].default_route must not refer to the same station (\"" +
+            out[i].name +
+            "\")"
+        );
+      }
+    }
+    i += 1;
   }
 
   //normalized stations

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-04
+
+### Added
+
+- **`rhaiteous clonepack`** — clone a host `./workflows/<source>` pack to `./workflows/<destination>` (`--source` / `--destination` or two positionals). Copies stations + sample `input/`; omits `output/` artifacts and `workflow.rhai` / `workflow.md`; rewrites `workflow.json` `name` and path args. Fails if destination exists (no `--force` yet).
+- **`rhaiteous compile` success summary** — friendly confirmation naming the workflow, source `workflow.json`, each written path (pack IR, `workflow.md`, `.grok/workflows/…`), and the `/workflow` command to run next.
+- **Pack finalizer (post-run)** — optional `workflow.json` `"finalizer"` (path relative to pack). After the last station, runner runs `node <finalizer> <thread.json>`. Omit / `""` / `false` / missing file → skip; non-zero exit fails the run. **`example-knock-knock`** demonstrates `finalize.mjs` → `custom-finalize.mjs` writing `output/finalize-summary.md`.
+- **`stations[].default_route`** — optional next station name when the returned post **omits** `metadata.to`. Explicit `[]` / `""` still ends the run. No implicit “next in `stations[]` order.” Validated at compile. **`example-office-shopping`** sets linear defaults; re-entrant packs (knock-knock, birthday) omit them.
+
+### Changed
+
+- **README restructured** around **concepts, installation, use cases** (All Audiences) plus **Content for AI Agents**. Install/verify uses `clonepack` → `verify-joke` → compile → `/workflow`. Common Use Case is clone → inputs via `args` → compile → run → pack-level Git. Removed redundant **How Rhaiteous works** section (unique bits folded into Concepts).
+- **Installation** requirements list Grok Build, xAI account, Node, **fnm** (recommended), npm/npx, project directory.
+- **`rhaiteous --help`** prints only an install-verification line and a link to the web README (full usage lives in the README / docs).
+- Discourage global `npm install -g rhaiteous`; prefer project-local `npx` after `npm install --save-dev`.
+
+### Removed
+
+- **`grok-build-prompt.md`** — superseded by the README AI Agents section.
+- Verbose CLI usage dump from `--help` (replaced by README pointer).
+
 ## [0.6.0] — 2026-09-03
 
 ### Changed

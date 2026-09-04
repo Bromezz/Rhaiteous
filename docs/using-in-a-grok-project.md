@@ -2,6 +2,12 @@
 
 Step-by-step: install the compiler from **npm**, lay out authoring files under version control, compile into Grok’s project workflow directory, and keep the generated `.rhai` trackable in git.
 
+## Grok Build + README (project builder)
+
+You can start Grok Build in **any directory** and ask it to set up a Rhaiteous workflow project from the latest npm package. The **package / repo [`README.md`](../README.md)** is the canon: **concepts, installation, use cases** (All Audiences) and **Content for AI Agents** (portable text for `AGENTS.md` or `.grok/rules/…`). Prefer that README for install/verify (`clonepack` → `verify-joke`) and the common clone → compile → run loop.
+
+Agents should also read extended docs on GitHub under [`docs/`](https://github.com/Bromezz/Rhaiteous/tree/main/docs). The npm `homepage` points at the GitHub README: https://github.com/Bromezz/Rhaiteous#readme
+
 ## Recommended usage
 
 | Audience | How to run Rhaiteous |

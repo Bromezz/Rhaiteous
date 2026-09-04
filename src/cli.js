@@ -12,48 +12,18 @@ import nodeFs from "node:fs";
 //shared modules
 import compileMod from "./compile-workflow.js";
 import initMod from "./init-project.js";
+import cloneMod from "./clone-pack.js";
 
 /*
- * @description print CLI usage to stderr
+ * @description print install verification / docs pointer to stderr
  * @returns nothing
  */
 function printUsage() {
 
-  //usage text
+  //docs only — full usage lives in the README
   const text =
-    "Usage:\n" +
-    "  rhaiteous init [options]\n" +
-    "  rhaiteous compile <pack-name> [options]\n" +
-    "  rhaiteous <workflow.json> [options]\n" +
-    "\n" +
-    "Rhaiteous — JSON workflow packs → Grok Build Rhai IR.\n" +
-    "\n" +
-    "Commands:\n" +
-    "  init              Create ./workflows/, copy example-* seed packs from the\n" +
-    "                    installed package, and add a workflows/ gitignore line.\n" +
-    "  compile <name>    Compile ./workflows/<name>/workflow.json into that pack\n" +
-    "                    (workflow.rhai + workflow.md) and .grok/workflows/<name>.rhai\n" +
-    "  <workflow.json>   Compile an explicit workflow file (legacy / advanced)\n" +
-    "\n" +
-    "Init options:\n" +
-    "  --force           Overwrite existing example-* seed packs only\n" +
-    "  --no-gitignore    Do not create/update .gitignore\n" +
-    "  --dir <path>      Host project root (default: cwd)\n" +
-    "\n" +
-    "Compile options:\n" +
-    "  -o, --out <path>  Output .rhai path (pack default: workflows/<name>/workflow.rhai)\n" +
-    "  -b, --base <path> Asset base (pack default: workflows/<name>)\n" +
-    "  --stdout          Print Rhai to stdout instead of writing a file\n" +
-    "  --dry-run         Compile but do not write\n" +
-    "  --no-grok         Do not also write .grok/workflows/<name>.rhai\n" +
-    "\n" +
-    "  -h, --help        Show this help\n" +
-    "\n" +
-    "Typical host flow:\n" +
-    "  npm install --save-dev rhaiteous\n" +
-    "  npx rhaiteous init\n" +
-    "  npx rhaiteous compile example-office-shopping\n" +
-    "  /workflow example-office-shopping { …args }\n";
+    "Rhaiteous is available.\n" +
+    "Documentation: https://github.com/Bromezz/Rhaiteous#readme\n";
 
   //write help
   nodeProcess.stderr.write(text);
@@ -459,51 +429,7 @@ function runCompile(argv) {
   //end stdout
   }
 
-  //status
-  if (values["dry-run"]) {
-
-    //dry
-    nodeProcess.stderr.write(
-      "ok: compiled " +
-        result.name +
-        " (" +
-        result.rhai.length +
-        " bytes, dry-run)\n"
-    );
-
-  } else if (values.stdout) {
-
-    //stdout
-    nodeProcess.stderr.write(
-      "ok: compiled " + result.name + " (" + result.rhai.length + " bytes, stdout)\n"
-    );
-
-  } else {
-
-    //wrote rhai
-    nodeProcess.stderr.write(
-      "ok: wrote " + nodePath.resolve(result.outputPath) + "\n"
-    );
-
-    //md paths
-    if (Array.isArray(result.workflowMdPaths)) {
-
-      //each
-      result.workflowMdPaths.forEach(function logMd(p) {
-
-        //line
-        nodeProcess.stderr.write("ok: wrote " + nodePath.resolve(p) + "\n");
-
-      //end forEach
-      });
-
-    //end md
-    }
-
-  //end status
-  }
-
-  //publish Grok discovery IR
+  //publish Grok discovery IR before the success summary
   if (publishGrok && result && result.name) {
 
     //path
@@ -524,13 +450,11 @@ function runCompile(argv) {
       //write
       nodeFs.writeFileSync(grokPath, result.rhai, "utf8");
 
-      //status
-      nodeProcess.stderr.write("ok: wrote " + grokPath + "\n");
-
     } catch (err) {
 
       //warn but success compile
       console.error("warning: failed to write Grok IR " + grokPath, err);
+      grokPath = "";
 
     //end grok write
     }
@@ -538,10 +462,267 @@ function runCompile(argv) {
   //end publish grok
   }
 
+  //friendly confirmation (enough detail for a human or agent)
+  if (values["dry-run"]) {
+
+    //dry
+    nodeProcess.stderr.write(
+      "ok: compile succeeded (dry-run) for workflow \"" +
+        result.name +
+        "\"\n" +
+        "ok: source  " +
+        nodePath.resolve(inputPath) +
+        "\n" +
+        "ok: would write pack IR + workflow.md; no files written\n" +
+        "ok: Rhai size " +
+        result.rhai.length +
+        " bytes\n"
+    );
+
+  } else if (values.stdout) {
+
+    //stdout
+    nodeProcess.stderr.write(
+      "ok: compile succeeded for workflow \"" +
+        result.name +
+        "\" (Rhai printed to stdout)\n" +
+        "ok: source  " +
+        nodePath.resolve(inputPath) +
+        "\n" +
+        "ok: Rhai size " +
+        result.rhai.length +
+        " bytes\n"
+    );
+
+  } else {
+
+    //disk write summary
+    nodeProcess.stderr.write(
+      "ok: compile succeeded for workflow \"" + result.name + "\"\n"
+    );
+    nodeProcess.stderr.write(
+      "ok: source  " + nodePath.resolve(inputPath) + "\n"
+    );
+    nodeProcess.stderr.write(
+      "ok: wrote   " +
+        nodePath.resolve(result.outputPath) +
+        "  (pack IR — do not hand-edit)\n"
+    );
+
+    //md paths
+    if (Array.isArray(result.workflowMdPaths)) {
+
+      //each
+      result.workflowMdPaths.forEach(function logMd(p) {
+
+        //line
+        nodeProcess.stderr.write(
+          "ok: wrote   " +
+            nodePath.resolve(p) +
+            "  (human guide — do not hand-edit)\n"
+        );
+
+      //end forEach
+      });
+
+    //end md
+    }
+
+    //grok discovery
+    if (publishGrok && grokPath) {
+
+      //line
+      nodeProcess.stderr.write(
+        "ok: wrote   " +
+          grokPath +
+          "  (Grok Build discovery path)\n"
+      );
+
+    //end grok line
+    }
+
+    //how to run
+    nodeProcess.stderr.write(
+      "next: in Grok Build (workspace = this project root), run:\n" +
+        "      /workflow " +
+        result.name +
+        " {}\n"
+    );
+
+  //end disk summary
+  }
+
   //ok
   return 0;
 
 //end runCompile
+}
+
+/*
+ * @description run clonepack subcommand
+ * @param argv - args after "clonepack"
+ * @returns exit code
+ */
+function runClonePack(argv) {
+
+  //variables
+  let parsed = null; //parse
+  let positionals = null; //pos
+  let values = null; //flags
+  let source = ""; //from
+  let destination = ""; //to
+  let posIndex = 0; //consume positionals
+  let report = null; //result
+
+  try {
+
+    //parse
+    parsed = nodeUtil.parseArgs({
+      args: argv, //after clonepack
+      options: {
+        source: {
+          type: "string", //pack id
+        },
+        destination: {
+          type: "string", //pack id
+        },
+        dir: {
+          type: "string", //host root
+        },
+        help: {
+          type: "boolean", //help
+          short: "h", //short
+          default: false, //default
+        },
+      },
+      allowPositionals: true, //source dest
+    });
+
+  } catch (err) {
+
+    //log
+    console.error("failed to parse clonepack arguments", err);
+
+    //usage
+    printUsage();
+
+    //code
+    return 2;
+
+  }
+
+  //accessors
+  positionals = parsed.positionals || [];
+  values = parsed.values;
+
+  //help
+  if (values.help) {
+
+    //print
+    printUsage();
+
+    //ok
+    return 0;
+
+  //end help
+  }
+
+  //source: flag or next positional
+  source = typeof values.source === "string" ? values.source : "";
+  if (!source && posIndex < positionals.length) {
+
+    //from positional
+    source = positionals[posIndex];
+    posIndex += 1;
+
+  //end source positional
+  }
+
+  //destination: flag or next positional
+  destination =
+    typeof values.destination === "string" ? values.destination : "";
+  if (!destination && posIndex < positionals.length) {
+
+    //from positional
+    destination = positionals[posIndex];
+    posIndex += 1;
+
+  //end destination positional
+  }
+
+  //extra positionals
+  if (posIndex < positionals.length) {
+
+    //error
+    nodeProcess.stderr.write(
+      "error: unexpected argument: " + positionals[posIndex] + "\n\n"
+    );
+
+    //usage
+    printUsage();
+
+    //code
+    return 2;
+
+  //end extra
+  }
+
+  //need both
+  if (!source || !destination) {
+
+    //missing
+    nodeProcess.stderr.write(
+      "error: clonepack requires --source and --destination " +
+        "(or two positional pack names)\n\n"
+    );
+
+    //usage
+    printUsage();
+
+    //code
+    return 2;
+
+  //end missing
+  }
+
+  try {
+
+    //clone
+    report = cloneMod.clonePack({
+      hostRoot: values.dir, //optional
+      source: source, //from
+      destination: destination, //to
+    });
+
+  } catch (err) {
+
+    //log
+    console.error("rhaiteous clonepack failed", err);
+
+    //fail
+    return 1;
+
+  }
+
+  //status
+  nodeProcess.stderr.write(
+    "ok: cloned " +
+      report.source +
+      " → " +
+      report.destination +
+      "\n" +
+      "ok: " +
+      report.destinationDir +
+      "\n" +
+      "next: npx rhaiteous compile " +
+      report.destination +
+      "\n"
+  );
+
+  //ok
+  return 0;
+
+//end runClonePack
 }
 
 /*
@@ -600,6 +781,15 @@ function main() {
     return runCompile(argv.slice(1));
 
   //end compile
+  }
+
+  //clonepack subcommand
+  if (cmd === "clonepack") {
+
+    //run
+    return runClonePack(argv.slice(1));
+
+  //end clonepack
   }
 
   //legacy / explicit: first arg is workflow.json path
