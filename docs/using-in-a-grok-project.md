@@ -6,6 +6,8 @@ Step-by-step: install the compiler from **npm**, lay out authoring files under v
 
 You can start Grok Build in **any directory** and ask it to set up a Rhaiteous workflow project from the latest npm package. The **package / repo [`README.md`](../README.md)** is the canon: **concepts, installation, use cases** (All Audiences) and **Content for AI Agents** (portable text for `AGENTS.md` or `.grok/rules/…`). Prefer that README for install/verify (`clonepack` → `verify-joke`) and the common clone → compile → run loop.
 
+**Folder trust:** the project root must be a **trusted** Grok workspace before project `.rhai` workflows under `./.grok/workflows/` will run. Use `/hooks-trust` or `--trust`; grants live in `~/.grok/trusted_folders.toml`. Treat trust as a **pre-install** step — do not work around an untrusted folder by copying IR to `~/.grok/workflows/`.
+
 Agents should also read extended docs on GitHub under [`docs/`](https://github.com/Bromezz/Rhaiteous/tree/main/docs). The npm `homepage` points at the GitHub README: https://github.com/Bromezz/Rhaiteous#readme
 
 ## Recommended usage

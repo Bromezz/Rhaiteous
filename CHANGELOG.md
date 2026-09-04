@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-04
+
+### Changed
+
+- **README / AI Agents:** Grok **folder trust** is a pre-install gate (`/hooks-trust` or `--trust`; `~/.grok/trusted_folders.toml`). Agents must ask-and-wait, probe before `npm install`, and **fail closed** (no `~/.grok/workflows/` workaround) if the project workspace is untrusted.
+- **Content for AI Agents** slimmed: points at All Audiences for product steps (no duplicated install/docs lists); requires **`ask_user_question`** (question cards) for intake decisions; keeps trust / approval / fail-closed rules only.
+
 ## [0.7.0] — 2026-09-04
 
 ### Added
